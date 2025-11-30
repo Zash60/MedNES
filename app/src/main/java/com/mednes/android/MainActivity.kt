@@ -1,5 +1,6 @@
 package com.mednes.android
 
+import android.app.Activity // <--- MUDANÇA 1: Importe Activity
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.Handler
@@ -9,11 +10,13 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity // Importante
+// REMOVA: import androidx.appcompat.app.AppCompatActivity 
 import java.io.File
 import android.os.Environment
 
-class MainActivity : AppCompatActivity() { // Deve herdar de AppCompatActivity
+// <--- MUDANÇA 2: Herde de Activity, não AppCompatActivity
+class MainActivity : Activity() { 
+    
     private lateinit var screen: ImageView
     private lateinit var status: TextView
     private var emuBitmap: Bitmap? = null
@@ -23,7 +26,7 @@ class MainActivity : AppCompatActivity() { // Deve herdar de AppCompatActivity
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Código para esconder barra de navegação e status (Immersive Sticky)
+        // Forçar tela cheia e esconder navegação
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -68,7 +71,6 @@ class MainActivity : AppCompatActivity() { // Deve herdar de AppCompatActivity
     
     private fun setupBtn(id: Int, key: Int) {
         val btn = findViewById<Button>(id)
-        // Verifica se o botão existe no layout antes de adicionar listener
         btn?.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
             if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
