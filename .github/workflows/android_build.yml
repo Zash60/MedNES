@@ -19,7 +19,7 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # CONFIGURAÇÃO CRÍTICA: Força Gradle 8.2
+    # Força o uso do Gradle 8.2 para compatibilidade com o AGP 8.1.4
     - name: Setup Gradle 8.2
       uses: gradle/actions/setup-gradle@v3
       with:
@@ -65,11 +65,11 @@ jobs:
         sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
 
     # ---------------------------------------------------------
-    # 4. GERAR ARQUIVOS GRADLE (CORREÇÃO AQUI)
+    # 4. GERAR ARQUIVOS GRADLE
     # ---------------------------------------------------------
     - name: Generate Gradle Config
       run: |
-        # gradle.properties (CORREÇÃO DO ERRO ANDROIDX)
+        # gradle.properties
         cat <<EOF > gradle.properties
         android.useAndroidX=true
         android.enableJetifier=true
@@ -275,7 +275,9 @@ jobs:
 
             void* pixels;
             if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
+            
             memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
+            
             AndroidBitmap_unlockPixels(env, bitmap);
         }
 
@@ -357,7 +359,7 @@ jobs:
                         status.text = "Failed to load ROM"
                     }
                 } else {
-                    status.text = "Put rom.nes in Downloads folder"
+                    status.text = "Place rom.nes in Downloads folder"
                 }
 
                 setupBtn(R.id.btnA, 0)
@@ -388,7 +390,7 @@ jobs:
         }
         EOF
 
-        # Layout XML
+        # Layout XML (CORRIGIDO: &lt; e &gt; em vez de < e >)
         cat <<EOF > app/src/main/res/layout/activity_main.xml
         <?xml version="1.0" encoding="utf-8"?>
         <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -415,9 +417,9 @@ jobs:
                 android:orientation="vertical" android:layout_alignParentBottom="true" android:layout_alignParentStart="true" android:padding="20dp">
                 <Button android:id="@+id/btnUp" android:text="^" android:layout_width="60dp" android:layout_height="60dp" android:layout_gravity="center_horizontal"/>
                 <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
-                    <Button android:id="@+id/btnLeft" android:text="<" android:layout_width="60dp" android:layout_height="60dp"/>
+                    <Button android:id="@+id/btnLeft" android:text="&lt;" android:layout_width="60dp" android:layout_height="60dp"/>
                     <Button android:id="@+id/btnDown" android:text="v" android:layout_width="60dp" android:layout_height="60dp"/>
-                    <Button android:id="@+id/btnRight" android:text=">" android:layout_width="60dp" android:layout_height="60dp"/>
+                    <Button android:id="@+id/btnRight" android:text="&gt;" android:layout_width="60dp" android:layout_height="60dp"/>
                 </LinearLayout>
             </LinearLayout>
 
