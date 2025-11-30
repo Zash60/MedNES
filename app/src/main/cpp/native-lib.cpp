@@ -10,7 +10,6 @@
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "MedNES", __VA_ARGS__)
 
-// Mapping
 #define KEY_A 97
 #define KEY_B 98
 #define KEY_SELECT 32
@@ -30,26 +29,24 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
     const char *path = env->GetStringUTFChars(romPath, 0);
     
-    if (objRom != nullptr) {
-        if(objCpu) delete objCpu; 
-        if(objController) delete objController; 
-        if(objPpu) delete objPpu; 
-        if(objMapper) delete objMapper; 
-        if(objRom) delete objRom;
-        objRom = nullptr; objCpu = nullptr;
+    // Limpeza completa para evitar crash ao recarregar
+    if (objRom) {
+        if(objCpu) { delete objCpu; objCpu = nullptr; }
+        if(objController) { delete objController; objController = nullptr; }
+        if(objPpu) { delete objPpu; objPpu = nullptr; }
+        if(objMapper) { delete objMapper; objMapper = nullptr; }
+        delete objRom; objRom = nullptr;
     }
 
     objRom = new MedNES::ROM();
     try {
         objRom->open(std::string(path));
     } catch (...) {
-        LOGE("Erro ao abrir arquivo");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
 
     if (objRom->getPrgCode().empty()) {
-        LOGE("ROM Vazia");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
@@ -73,7 +70,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
     if (!objCpu || !objPpu) return;
     
-    // Executa emulação
+    // Avança a CPU até que a PPU sinalize o fim do frame (VBlank)
     while (!objPpu->generateFrame) { 
         objCpu->step(); 
     }
@@ -85,16 +82,11 @@ Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap
     uint32_t* src = objPpu->buffer;
     uint32_t* dst = (uint32_t*)pixels;
     
-    // Otimização de Loop: 256 * 240 = 61440 pixels
-    // Trocamos R e B para corrigir as cores no Android
+    // Loop otimizado para 60 FPS
+    // 256 * 240 = 61440 pixels
+    // Conversão de formato de cor ABGR (interno) para ARGB (Android)
     for (int i = 0; i < 61440; ++i) {
         uint32_t c = src[i];
-        // O formato MedNES parece ser 0xAABBGGRR ou 0xBBGGRRAA dependendo da endianness
-        // Android usa ARGB (0xAARRGGBB).
-        // Se o Mario estava azul, B e R estavam trocados.
-        // (c & 0xFF00FF00) mantem Alpha e Green
-        // ((c & 0x00FF0000) >> 16) move Blue para posição Red
-        // ((c & 0x000000FF) << 16) move Red para posição Blue
         dst[i] = (c & 0xFF00FF00) | ((c & 0x00FF0000) >> 16) | ((c & 0x000000FF) << 16);
     }
     
