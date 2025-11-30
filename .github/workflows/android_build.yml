@@ -23,11 +23,58 @@ jobs:
       uses: android-actions/setup-android@v3
 
     # ---------------------------------------------------------
-    # 1. CRIAR ESTRUTURA BÁSICA E ARQUIVOS DE BUILD (ROOT)
+    # 1. SCAFFOLDING (CRIAR DIRETÓRIOS PRIMEIRO)
     # ---------------------------------------------------------
-    - name: Create Root Build Files
+    - name: Create Project Directory Structure
       run: |
-        # settings.gradle (Define onde buscar plugins)
+        echo "Creating directories..."
+        mkdir -p app/src/main/cpp
+        mkdir -p app/src/main/java/com/mednes/android
+        mkdir -p app/src/main/res/layout
+        mkdir -p app/src/main/res/values
+        mkdir -p gradle/wrapper
+        echo "Directories created."
+
+    # ---------------------------------------------------------
+    # 2. COPIAR CÓDIGO FONTE ORIGINAL
+    # ---------------------------------------------------------
+    - name: Copy Source Core
+      run: |
+        # Copia a pasta Source/Core para dentro da pasta C++ do Android
+        cp -r Source/Core app/src/main/cpp/Core
+        echo "Source code copied."
+
+    # ---------------------------------------------------------
+    # 3. PATCH: REMOVER DEPENDÊNCIA DO SDL
+    # ---------------------------------------------------------
+    - name: Patch SDL Dependency
+      run: |
+        # Cria um arquivo FakeSDL.hpp para substituir o SDL.h
+        cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
+        #pragma once
+        #include <stdint.h>
+        typedef int32_t SDL_Keycode;
+        // Mapeamento interno para substituir SDL
+        #define SDLK_a 97
+        #define SDLK_b 98
+        #define SDLK_SPACE 32
+        #define SDLK_RETURN 13
+        #define SDLK_UP 1073741906
+        #define SDLK_DOWN 1073741905
+        #define SDLK_LEFT 1073741904
+        #define SDLK_RIGHT 1073741903
+        EOF
+
+        # Substitui o include no Controller.hpp
+        sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
+        echo "SDL dependency patched."
+
+    # ---------------------------------------------------------
+    # 4. CRIAR ARQUIVOS DE CONFIGURAÇÃO GRADLE
+    # ---------------------------------------------------------
+    - name: Generate Gradle Files
+      run: |
+        # settings.gradle
         cat <<EOF > settings.gradle
         pluginManagement {
             repositories {
@@ -47,12 +94,16 @@ jobs:
         include ':app'
         EOF
 
-        # build.gradle (Raiz - Define versões dos plugins)
+        # build.gradle (Raiz)
         cat <<EOF > build.gradle
         buildscript {
             repositories {
                 google()
                 mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.2.0'
+                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20"
             }
         }
         plugins {
@@ -60,25 +111,6 @@ jobs:
             id 'org.jetbrains.kotlin.android' version '1.9.20' apply false
         }
         EOF
-
-    # ---------------------------------------------------------
-    # 2. GERAR GRADLE WRAPPER
-    # ---------------------------------------------------------
-    - name: Init Gradle Wrapper
-      run: |
-        # Agora que settings.gradle existe, podemos rodar isso.
-        # Usamos o gradle do sistema (9.x) para baixar o 8.5 que é compatível com AGP.
-        gradle wrapper --gradle-version 8.5
-
-    # ---------------------------------------------------------
-    # 3. CRIAR MÓDULO APP E ESTRUTURA DE DIRETÓRIOS
-    # ---------------------------------------------------------
-    - name: Create App Structure
-      run: |
-        mkdir -p app/src/main/cpp
-        mkdir -p app/src/main/java/com/mednes/android
-        mkdir -p app/src/main/res/layout
-        mkdir -p app/src/main/res/values
 
         # app/build.gradle
         cat <<EOF > app/build.gradle
@@ -155,41 +187,9 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 4. COPIAR CÓDIGO FONTE DO MEDNES
+    # 5. GERAR CÓDIGO C++ (JNI/Ponte)
     # ---------------------------------------------------------
-    - name: Copy Source Core
-      run: |
-        # Copia a pasta Source/Core para dentro da pasta C++ do Android
-        cp -r Source/Core app/src/main/cpp/Core
-        ls -R app/src/main/cpp/Core
-
-    # ---------------------------------------------------------
-    # 5. PATCH: REMOVER DEPENDÊNCIA DO SDL
-    # ---------------------------------------------------------
-    - name: Patch SDL Dependency
-      run: |
-        # Cria FakeSDL.hpp
-        cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
-        #pragma once
-        #include <stdint.h>
-        typedef int32_t SDL_Keycode;
-        #define SDLK_a 97
-        #define SDLK_b 98
-        #define SDLK_SPACE 32
-        #define SDLK_RETURN 13
-        #define SDLK_UP 1073741906
-        #define SDLK_DOWN 1073741905
-        #define SDLK_LEFT 1073741904
-        #define SDLK_RIGHT 1073741903
-        EOF
-
-        # Substitui o include no Controller.hpp
-        sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
-
-    # ---------------------------------------------------------
-    # 6. CRIAR CÓDIGO C++ (JNI e CMake)
-    # ---------------------------------------------------------
-    - name: Create C++ Native Interface
+    - name: Generate Native C++ Files
       run: |
         # CMakeLists.txt
         cat <<EOF > app/src/main/cpp/CMakeLists.txt
@@ -215,10 +215,11 @@ jobs:
         target_include_directories(mednes PRIVATE Core)
         find_library(log-lib log)
         find_library(android-lib android)
+        # Link jnigraphics for Bitmap manipulation
         target_link_libraries(mednes \${log-lib} \${android-lib} jnigraphics)
         EOF
 
-        # native-lib.cpp (A Ponte entre Java e C++)
+        # native-lib.cpp
         cat <<EOF > app/src/main/cpp/native-lib.cpp
         #include <jni.h>
         #include <string>
@@ -230,7 +231,6 @@ jobs:
         #include "Core/PPU.hpp"
         #include "Core/ROM.hpp"
 
-        // Mapeamento
         #define KEY_A 97
         #define KEY_B 98
         #define KEY_SELECT 32
@@ -250,9 +250,7 @@ jobs:
         Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
             const char *path = env->GetStringUTFChars(romPath, 0);
             
-            // Limpa anterior
             if (objRom != nullptr) {
-                // Ordem de deleção importante para evitar crash
                 if(objCpu) delete objCpu; 
                 if(objController) delete objController; 
                 if(objPpu) delete objPpu; 
@@ -288,16 +286,14 @@ jobs:
         Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
             if (!objCpu || !objPpu) return;
             
-            // Executa até completar um frame
+            // Executa até gerar VBlank
             while (!objPpu->generateFrame) { objCpu->step(); }
             objPpu->generateFrame = false;
 
             void* pixels;
             if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
             
-            // Copia buffer do PPU (256x240)
-            // O buffer do MedNES é uint32_t. 
-            // Nota: Pode haver inversão de cores (R/B) dependendo do endianness, mas para teste inicial memcpy é o mais rápido.
+            // Copia buffer (Assumindo formato compatível uint32_t)
             memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
             
             AndroidBitmap_unlockPixels(env, bitmap);
@@ -322,11 +318,11 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 7. CRIAR CÓDIGO KOTLIN (UI)
+    # 6. GERAR CÓDIGO KOTLIN (Interface)
     # ---------------------------------------------------------
-    - name: Create Kotlin UI
+    - name: Generate Kotlin UI
       run: |
-        # JNI Wrapper
+        # MedNESJni.kt
         cat <<EOF > app/src/main/java/com/mednes/android/MedNESJni.kt
         package com.mednes.android
         import android.graphics.Bitmap
@@ -338,7 +334,7 @@ jobs:
         }
         EOF
 
-        # MainActivity
+        # MainActivity.kt
         cat <<EOF > app/src/main/java/com/mednes/android/MainActivity.kt
         package com.mednes.android
         import android.graphics.Bitmap
@@ -366,24 +362,24 @@ jobs:
                 screen = findViewById(R.id.emulatorScreen)
                 status = findViewById(R.id.statusText)
                 
-                // Cria bitmap 256x240 (resolução nativa NES)
                 emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
                 screen.setImageBitmap(emuBitmap)
 
-                // Busca ROM no diretório de Downloads público
+                // Verifica ROM na pasta Downloads
                 val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val romFile = File(downloadDir, "rom.nes")
                 
+                // Tenta carregar, se falhar avisa
                 if (romFile.exists()) {
                     if (MedNESJni.loadRom(romFile.absolutePath)) {
                         isRunning = true
                         status.visibility = android.view.View.GONE
                         gameLoop()
                     } else {
-                        status.text = "Load Failed: " + romFile.absolutePath
+                        status.text = "Failed to load ROM"
                     }
                 } else {
-                    status.text = "Put rom.nes in Downloads folder"
+                    status.text = "Place rom.nes in Downloads"
                 }
 
                 setupBtn(R.id.btnA, 0)
@@ -397,8 +393,7 @@ jobs:
             }
             
             private fun setupBtn(id: Int, key: Int) {
-                val btn = findViewById<Button>(id)
-                btn?.setOnTouchListener { _, event ->
+                findViewById<Button>(id).setOnTouchListener { _, event ->
                     if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
                     if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
                     true
@@ -409,7 +404,6 @@ jobs:
                 if (!isRunning) return
                 MedNESJni.stepFrame(emuBitmap!!)
                 screen.invalidate()
-                // 16ms ~ 60fps
                 handler.postDelayed({ gameLoop() }, 16)
             }
         }
@@ -434,7 +428,7 @@ jobs:
                 android:id="@+id/statusText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Loading..."
+                android:text="Searching rom.nes..."
                 android:textColor="#FFFFFF"
                 android:layout_centerInParent="true"/>
 
@@ -466,15 +460,20 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 8. COMPILAR
+    # 7. PREPARAR E COMPILAR
     # ---------------------------------------------------------
-    - name: Build with Gradle
+    - name: Setup Gradle Wrapper
+      run: |
+        # Força a criação do wrapper AGORA que a estrutura existe
+        gradle wrapper --gradle-version 8.5
+
+    - name: Build Debug APK
       run: |
         chmod +x gradlew
         ./gradlew assembleDebug
 
     # ---------------------------------------------------------
-    # 9. UPLOAD (V4 FIXED)
+    # 8. ARTEFATO
     # ---------------------------------------------------------
     - name: Upload APK
       uses: actions/upload-artifact@v4
