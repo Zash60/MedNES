@@ -1,29 +1,39 @@
 package com.mednes.android
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.os.Bundle
-import android.util.Log
 import android.view.MotionEvent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.View
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
-import android.os.Environment
+import java.util.concurrent.atomic.AtomicBoolean
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
-    private lateinit var screen: ImageView
-    private lateinit var status: TextView
+    private lateinit var surfaceView: SurfaceView
+    private lateinit var statusText: TextView
+    private lateinit var fpsText: TextView
+    
     private var emuBitmap: Bitmap? = null
-    private var isRunning = false
+    private val isRunning = AtomicBoolean(false)
     private var gameThread: Thread? = null
     
+    // Variáveis do FPS
+    private var fpsCounter = 0
+    private var lastFpsTime = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Configuração de Tela Cheia (Immersive Sticky)
+        // Fullscreen
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -35,70 +45,102 @@ class MainActivity : AppCompatActivity() {
         
         setContentView(R.layout.activity_main)
 
-        screen = findViewById(R.id.emulatorScreen)
-        status = findViewById(R.id.statusText)
+        surfaceView = findViewById(R.id.emulatorSurface)
+        statusText = findViewById(R.id.statusText)
+        fpsText = findViewById(R.id.fpsText)
         
-        // Cria o Bitmap
-        emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
-        screen.setImageBitmap(emuBitmap)
-
-        // --- IMPORTANTE: USO DE getExternalFilesDir ---
-        // Isso evita erros de permissão no Android 10+.
-        // O usuário deve colocar a ROM em: /sdcard/Android/data/com.mednes.android/files/rom.nes
-        val appDir = getExternalFilesDir(null)
-        val romFile = File(appDir, "rom.nes")
-        
-        Log.d("MedNES", "Procurando ROM em: ${romFile.absolutePath}")
-
-        if (romFile.exists()) {
-            Log.d("MedNES", "Arquivo encontrado. Tentando carregar...")
-            if (MedNESJni.loadRom(romFile.absolutePath)) {
-                Log.d("MedNES", "ROM carregada com sucesso no C++")
-                status.visibility = View.GONE
-                startGameLoop()
-            } else {
-                Log.e("MedNES", "Falha ao carregar ROM no C++")
-                status.text = "Erro: Arquivo corrompido ou mapper não suportado."
-            }
-        } else {
-            Log.e("MedNES", "Arquivo não encontrado")
-            status.text = "Arquivo não encontrado!\nColoque 'rom.nes' em:\n${appDir?.absolutePath}"
-        }
+        surfaceView.holder.addCallback(this)
 
         setupControls()
     }
-    
-    private fun startGameLoop() {
-        isRunning = true
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        // Inicializa o emulador quando a superfície é criada
+        val appDir = getExternalFilesDir(null)
+        val romFile = File(appDir, "rom.nes")
+
+        if (romFile.exists()) {
+            if (MedNESJni.loadRom(romFile.absolutePath)) {
+                statusText.visibility = View.GONE
+                emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
+                startGameLoop(holder)
+            } else {
+                statusText.text = "Failed to load ROM"
+            }
+        } else {
+            statusText.text = "Place rom.nes in:\n${appDir?.absolutePath}"
+        }
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        isRunning.set(false)
+        try {
+            gameThread?.join()
+        } catch (e: InterruptedException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun startGameLoop(holder: SurfaceHolder) {
+        isRunning.set(true)
         gameThread = Thread {
-            while (isRunning) {
-                val start = System.currentTimeMillis()
-                
-                // Roda o emulador (C++)
+            val srcRect = Rect(0, 0, 256, 240)
+            val dstRect = Rect()
+            val paint = Paint(Paint.FILTER_BITMAP_FLAG) // Suaviza os pixels ao escalar
+            
+            lastFpsTime = System.currentTimeMillis()
+
+            while (isRunning.get()) {
+                val startTime = System.nanoTime()
+
+                // 1. Roda o Core C++
                 MedNESJni.stepFrame(emuBitmap!!)
-                
-                // Solicita atualização da tela
-                screen.postInvalidate()
-                
-                // Controle de FPS (aprox 60 FPS)
-                val elapsed = System.currentTimeMillis() - start
-                val wait = 16 - elapsed
-                if (wait > 0) {
-                    try { Thread.sleep(wait) } catch (e: Exception) {}
+
+                // 2. Desenha na tela (SurfaceView)
+                val canvas = holder.lockCanvas()
+                if (canvas != null) {
+                    // Ajusta escala (Aspect Ratio)
+                    val scale = Math.min(
+                        canvas.width.toFloat() / 256f,
+                        canvas.height.toFloat() / 240f
+                    )
+                    val w = (256 * scale).toInt()
+                    val h = (240 * scale).toInt()
+                    val x = (canvas.width - w) / 2
+                    val y = (canvas.height - h) / 2
+                    
+                    dstRect.set(x, y, x + w, y + h)
+                    
+                    canvas.drawColor(Color.BLACK) // Limpa fundo
+                    canvas.drawBitmap(emuBitmap!!, srcRect, dstRect, paint)
+                    
+                    holder.unlockCanvasAndPost(canvas)
                 }
+
+                // 3. Contador de FPS
+                fpsCounter++
+                val now = System.currentTimeMillis()
+                if (now - lastFpsTime >= 1000) {
+                    val fps = fpsCounter
+                    fpsCounter = 0
+                    lastFpsTime = now
+                    runOnUiThread {
+                        fpsText.text = "FPS: $fps"
+                    }
+                }
+                
+                // Limite de ~60 FPS (opcional, remove se quiser MAX performance)
+                /*
+                val frameTimeMs = (System.nanoTime() - startTime) / 1000000
+                if (frameTimeMs < 16) {
+                    try { Thread.sleep(16 - frameTimeMs) } catch (e: Exception) {}
+                }
+                */
             }
         }
         gameThread?.start()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        isRunning = false
-        try {
-            gameThread?.join(1000)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
     private fun setupControls() {
