@@ -1,5 +1,6 @@
 package com.mednes.android
 
+import android.app.Activity
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.Handler
@@ -9,11 +10,9 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity // Usando AppCompat
 import java.io.File
-import android.os.Environment
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : Activity() {
     private lateinit var screen: ImageView
     private lateinit var status: TextView
     private var emuBitmap: Bitmap? = null
@@ -23,7 +22,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Código para esconder barra de navegação (botões virtuais) e status
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -34,16 +32,17 @@ class MainActivity : AppCompatActivity() {
         )
         
         setContentView(R.layout.activity_main)
-
         screen = findViewById(R.id.emulatorScreen)
         status = findViewById(R.id.statusText)
         
         emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
         screen.setImageBitmap(emuBitmap)
 
-        // Caminho padrão de downloads
-        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val romFile = File(downloadDir, "rom.nes")
+        // --- MUDANÇA DE DIRETÓRIO ---
+        // Usa o diretório privado do app no armazenamento externo.
+        // O usuário deve colocar a ROM em: /Android/data/com.mednes.android/files/rom.nes
+        val appDir = getExternalFilesDir(null)
+        val romFile = File(appDir, "rom.nes")
         
         if (romFile.exists()) {
             if (MedNESJni.loadRom(romFile.absolutePath)) {
@@ -51,10 +50,14 @@ class MainActivity : AppCompatActivity() {
                 status.visibility = View.GONE
                 gameLoop()
             } else {
-                status.text = "Failed to load ROM"
+                status.text = "Erro: ROM inválida."
             }
         } else {
-            status.text = "Put rom.nes in Downloads folder"
+            status.text = "Arquivo não encontrado!\nColoque 'rom.nes' em:\n" + appDir?.absolutePath
+            // Permite clicar no texto para tentar recarregar (útil se o usuário colocar o arquivo com o app aberto)
+            status.setOnClickListener { 
+                recreate() 
+            }
         }
 
         setupBtn(R.id.btnA, 0)
