@@ -12,34 +12,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Baixa o código do seu repositório atual
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # 2. Configura o Java 17 (Necessário para Android Gradle Plugin 8.x)
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
 
-    # 3. Configura o Gradle 8.2
-    # ISSO É IMPORTANTE: Evita o erro "HasConvention" forçando uma versão
-    # compatível com o código que geramos anteriormente.
+    # Esta action instala e configura o Gradle 8.2 no sistema
+    # Isso substitui a necessidade do arquivo 'gradlew'
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:
         gradle-version: '8.2'
 
-    # 4. Garante permissão de execução no script do Gradle
-    - name: Make Gradle Executable
-      run: chmod +x gradlew
-
-    # 5. Compila o APK (Modo Debug)
+    # Compila usando o comando 'gradle' do sistema em vez de './gradlew'
     - name: Build Debug APK
-      run: ./gradlew assembleDebug
+      run: gradle assembleDebug
 
-    # 6. Faz o upload do APK gerado para você baixar
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
