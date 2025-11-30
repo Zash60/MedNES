@@ -23,38 +23,33 @@ jobs:
       uses: android-actions/setup-android@v3
 
     # ---------------------------------------------------------
-    # 1. SCAFFOLDING (CRIAR DIRETÓRIOS PRIMEIRO)
+    # 1. SCAFFOLDING (CRIAR DIRETÓRIOS)
     # ---------------------------------------------------------
-    - name: Create Project Directory Structure
+    - name: Create Directory Structure
       run: |
-        echo "Creating directories..."
         mkdir -p app/src/main/cpp
         mkdir -p app/src/main/java/com/mednes/android
         mkdir -p app/src/main/res/layout
         mkdir -p app/src/main/res/values
         mkdir -p gradle/wrapper
-        echo "Directories created."
 
     # ---------------------------------------------------------
-    # 2. COPIAR CÓDIGO FONTE ORIGINAL
+    # 2. COPIAR CÓDIGO FONTE
     # ---------------------------------------------------------
     - name: Copy Source Core
       run: |
-        # Copia a pasta Source/Core para dentro da pasta C++ do Android
         cp -r Source/Core app/src/main/cpp/Core
-        echo "Source code copied."
+        ls -R app/src/main/cpp/Core
 
     # ---------------------------------------------------------
     # 3. PATCH: REMOVER DEPENDÊNCIA DO SDL
     # ---------------------------------------------------------
     - name: Patch SDL Dependency
       run: |
-        # Cria um arquivo FakeSDL.hpp para substituir o SDL.h
         cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
         #pragma once
         #include <stdint.h>
         typedef int32_t SDL_Keycode;
-        // Mapeamento interno para substituir SDL
         #define SDLK_a 97
         #define SDLK_b 98
         #define SDLK_SPACE 32
@@ -65,12 +60,10 @@ jobs:
         #define SDLK_RIGHT 1073741903
         EOF
 
-        # Substitui o include no Controller.hpp
         sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
-        echo "SDL dependency patched."
 
     # ---------------------------------------------------------
-    # 4. CRIAR ARQUIVOS DE CONFIGURAÇÃO GRADLE
+    # 4. CONFIGURAR GRADLE (VERSÕES ESTÁVEIS)
     # ---------------------------------------------------------
     - name: Generate Gradle Files
       run: |
@@ -94,7 +87,7 @@ jobs:
         include ':app'
         EOF
 
-        # build.gradle (Raiz)
+        # build.gradle (Raiz) - Usando AGP 8.1.4 e Kotlin 1.9.0 (Combo Estável)
         cat <<EOF > build.gradle
         buildscript {
             repositories {
@@ -102,21 +95,19 @@ jobs:
                 mavenCentral()
             }
             dependencies {
-                classpath 'com.android.tools.build:gradle:8.2.0'
-                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20"
+                classpath 'com.android.tools.build:gradle:8.1.4'
+                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0"
             }
         }
-        plugins {
-            id 'com.android.application' version '8.2.0' apply false
-            id 'org.jetbrains.kotlin.android' version '1.9.20' apply false
-        }
+        // Plugins bloco vazio para compatibilidade com scripts antigos
+        plugins {}
         EOF
 
         # app/build.gradle
         cat <<EOF > app/build.gradle
         plugins {
             id 'com.android.application'
-            id 'org.jetbrains.kotlin.android'
+            id 'kotlin-android'
         }
 
         android {
@@ -187,9 +178,9 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 5. GERAR CÓDIGO C++ (JNI/Ponte)
+    # 5. GERAR CÓDIGO C++ (JNI)
     # ---------------------------------------------------------
-    - name: Generate Native C++ Files
+    - name: Generate C++ Files
       run: |
         # CMakeLists.txt
         cat <<EOF > app/src/main/cpp/CMakeLists.txt
@@ -215,7 +206,6 @@ jobs:
         target_include_directories(mednes PRIVATE Core)
         find_library(log-lib log)
         find_library(android-lib android)
-        # Link jnigraphics for Bitmap manipulation
         target_link_libraries(mednes \${log-lib} \${android-lib} jnigraphics)
         EOF
 
@@ -249,7 +239,6 @@ jobs:
         extern "C" JNIEXPORT jboolean JNICALL
         Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
             const char *path = env->GetStringUTFChars(romPath, 0);
-            
             if (objRom != nullptr) {
                 if(objCpu) delete objCpu; 
                 if(objController) delete objController; 
@@ -258,7 +247,6 @@ jobs:
                 if(objRom) delete objRom;
                 objRom = nullptr; objCpu = nullptr;
             }
-
             objRom = new MedNES::ROM();
             try {
                 objRom->open(std::string(path));
@@ -266,18 +254,15 @@ jobs:
                 env->ReleaseStringUTFChars(romPath, path);
                 return false;
             }
-            
             objMapper = objRom->getMapper();
             if (!objMapper) {
                 env->ReleaseStringUTFChars(romPath, path);
                 return false;
             }
-
             objPpu = new MedNES::PPU(objMapper);
             objController = new MedNES::Controller();
             objCpu = new MedNES::CPU6502(objMapper, objPpu, objController);
             objCpu->reset();
-
             env->ReleaseStringUTFChars(romPath, path);
             return true;
         }
@@ -285,17 +270,11 @@ jobs:
         extern "C" JNIEXPORT void JNICALL
         Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
             if (!objCpu || !objPpu) return;
-            
-            // Executa até gerar VBlank
             while (!objPpu->generateFrame) { objCpu->step(); }
             objPpu->generateFrame = false;
-
             void* pixels;
             if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
-            
-            // Copia buffer (Assumindo formato compatível uint32_t)
             memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
-            
             AndroidBitmap_unlockPixels(env, bitmap);
         }
 
@@ -365,11 +344,9 @@ jobs:
                 emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
                 screen.setImageBitmap(emuBitmap)
 
-                // Verifica ROM na pasta Downloads
                 val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val romFile = File(downloadDir, "rom.nes")
                 
-                // Tenta carregar, se falhar avisa
                 if (romFile.exists()) {
                     if (MedNESJni.loadRom(romFile.absolutePath)) {
                         isRunning = true
@@ -393,7 +370,8 @@ jobs:
             }
             
             private fun setupBtn(id: Int, key: Int) {
-                findViewById<Button>(id).setOnTouchListener { _, event ->
+                val btn = findViewById<Button>(id)
+                btn?.setOnTouchListener { _, event ->
                     if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
                     if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
                     true
@@ -428,11 +406,10 @@ jobs:
                 android:id="@+id/statusText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Searching rom.nes..."
+                android:text="Loading..."
                 android:textColor="#FFFFFF"
                 android:layout_centerInParent="true"/>
 
-            <!-- D-PAD -->
             <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:orientation="vertical" android:layout_alignParentBottom="true" android:layout_alignParentStart="true" android:padding="20dp">
                 <Button android:id="@+id/btnUp" android:text="^" android:layout_width="60dp" android:layout_height="60dp" android:layout_gravity="center_horizontal"/>
@@ -443,14 +420,12 @@ jobs:
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- A/B -->
             <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:orientation="horizontal" android:layout_alignParentBottom="true" android:layout_alignParentEnd="true" android:padding="30dp">
                 <Button android:id="@+id/btnB" android:text="B" android:layout_width="70dp" android:layout_height="70dp" android:layout_marginEnd="10dp"/>
                 <Button android:id="@+id/btnA" android:text="A" android:layout_width="70dp" android:layout_height="70dp"/>
             </LinearLayout>
 
-            <!-- Select/Start -->
              <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:orientation="horizontal" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" android:paddingBottom="10dp">
                 <Button android:id="@+id/btnSelect" android:text="Sel" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
@@ -460,12 +435,12 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 7. PREPARAR E COMPILAR
+    # 7. PREPARAR E COMPILAR (FORCE GRADLE 8.2)
     # ---------------------------------------------------------
-    - name: Setup Gradle Wrapper
+    - name: Setup Gradle Wrapper 8.2
       run: |
-        # Força a criação do wrapper AGORA que a estrutura existe
-        gradle wrapper --gradle-version 8.5
+        # FORÇAMOS A VERSÃO 8.2 AQUI. Isso corrige o erro "HasConvention"
+        gradle wrapper --gradle-version 8.2
 
     - name: Build Debug APK
       run: |
