@@ -37,27 +37,20 @@ Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath)
     }
 
     objRom = new MedNES::ROM();
-    
-    // Tenta abrir o arquivo
     try {
         objRom->open(std::string(path));
     } catch (...) {
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
-
-    // --- CORREÇÃO DO CRASH ---
-    // Verifica se a ROM tem dados. Se estiver vazia (falha de leitura/permissão), retorna erro.
+    
     if (objRom->getPrgCode().empty()) {
-        __android_log_print(ANDROID_LOG_ERROR, "MedNES", "CRASH PREVENIDO: ROM vazia ou sem permissão de leitura em: %s", path);
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
-    // -------------------------
 
     objMapper = objRom->getMapper();
     if (!objMapper) {
-        __android_log_print(ANDROID_LOG_ERROR, "MedNES", "Mapper não suportado ou inválido.");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
@@ -65,8 +58,6 @@ Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath)
     objPpu = new MedNES::PPU(objMapper);
     objController = new MedNES::Controller();
     objCpu = new MedNES::CPU6502(objMapper, objPpu, objController);
-    
-    // Agora é seguro resetar, pois a memória está alocada
     objCpu->reset();
 
     env->ReleaseStringUTFChars(romPath, path);
@@ -77,12 +68,28 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
     if (!objCpu || !objPpu) return;
     
+    // Executa o núcleo (PPU/CPU) até completar um quadro
     while (!objPpu->generateFrame) { objCpu->step(); }
     objPpu->generateFrame = false;
 
     void* pixels;
+    // Trava o bitmap para escrita
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
-    memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
+    
+    uint32_t* src = objPpu->buffer;
+    uint32_t* dst = (uint32_t*)pixels;
+    int count = 256 * 240;
+
+    // --- CORREÇÃO DE CORES ---
+    // O buffer original provavelmente está em 0xAABBGGRR, mas o Android quer 0xAARRGGBB (ou vice-versa).
+    // Este loop troca o canal Vermelho pelo Azul.
+    for (int i = 0; i < count; ++i) {
+        uint32_t color = src[i];
+        // Mantém Alpha e Green, troca Red e Blue
+        // Formato: AARRGGBB <-> AABBGGRR
+        dst[i] = (color & 0xFF00FF00) | ((color & 0x00FF0000) >> 16) | ((color & 0x000000FF) << 16);
+    }
+
     AndroidBitmap_unlockPixels(env, bitmap);
 }
 
