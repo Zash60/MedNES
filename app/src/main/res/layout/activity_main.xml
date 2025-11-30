@@ -4,14 +4,13 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- MUDANÇA: SurfaceView é muito mais rápido para jogos -->
-    <SurfaceView
+    <com.mednes.android.AspectSurfaceView
         android:id="@+id/emulatorSurface"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_centerInParent="true" />
 
-    <!-- CONTADOR DE FPS -->
+    <!-- Rest of the layout remains unchanged -->
     <TextView
         android:id="@+id/fpsText"
         android:layout_width="wrap_content"
