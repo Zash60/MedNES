@@ -23,71 +23,11 @@ jobs:
       uses: android-actions/setup-android@v3
 
     # ---------------------------------------------------------
-    # 1. CRIAR ESTRUTURA DE DIRETÓRIOS
+    # 1. CRIAR ESTRUTURA BÁSICA E ARQUIVOS DE BUILD (ROOT)
     # ---------------------------------------------------------
-    - name: Create Project Structure
+    - name: Create Root Build Files
       run: |
-        mkdir -p app/src/main/cpp
-        mkdir -p app/src/main/java/com/mednes/android
-        mkdir -p app/src/main/res/layout
-        mkdir -p app/src/main/res/values
-        mkdir -p gradle/wrapper
-
-    # ---------------------------------------------------------
-    # 2. COPIAR O CORE DO MEDNES
-    # ---------------------------------------------------------
-    - name: Copy Source Core
-      run: |
-        # Copia a pasta Source/Core para dentro da pasta C++ do Android
-        cp -r Source/Core app/src/main/cpp/Core
-        ls -R app/src/main/cpp/Core
-
-    # ---------------------------------------------------------
-    # 3. PATCH: REMOVER DEPENDÊNCIA DO SDL
-    # ---------------------------------------------------------
-    - name: Patch SDL Dependency
-      run: |
-        # Cria FakeSDL.hpp
-        cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
-        #pragma once
-        #include <stdint.h>
-        typedef int32_t SDL_Keycode;
-        #define SDLK_a 97
-        #define SDLK_b 98
-        #define SDLK_SPACE 32
-        #define SDLK_RETURN 13
-        #define SDLK_UP 1073741906
-        #define SDLK_DOWN 1073741905
-        #define SDLK_LEFT 1073741904
-        #define SDLK_RIGHT 1073741903
-        EOF
-
-        # Substitui o include no Controller.hpp
-        sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
-
-    # ---------------------------------------------------------
-    # 4. GERAR GRADLE WRAPPER (Garante Gradle 8.5)
-    # ---------------------------------------------------------
-    - name: Generate Gradle Wrapper
-      run: |
-        cat <<EOF > gradle/wrapper/gradle-wrapper.properties
-        distributionBase=GRADLE_USER_HOME
-        distributionPath=wrapper/dists
-        distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
-        zipStoreBase=GRADLE_USER_HOME
-        zipStorePath=wrapper/dists
-        EOF
-        
-        # Baixa o jar do wrapper para bootstrap (opcional, mas boa prática se não tiver)
-        # O comando gradle wrapper do sistema vai gerar o jar
-        gradle wrapper --gradle-version 8.5
-
-    # ---------------------------------------------------------
-    # 5. CRIAR ARQUIVOS DE BUILD (Sintaxe Moderna)
-    # ---------------------------------------------------------
-    - name: Create Build Files
-      run: |
-        # settings.gradle
+        # settings.gradle (Define onde buscar plugins)
         cat <<EOF > settings.gradle
         pluginManagement {
             repositories {
@@ -107,13 +47,38 @@ jobs:
         include ':app'
         EOF
 
-        # build.gradle (Raiz)
+        # build.gradle (Raiz - Define versões dos plugins)
         cat <<EOF > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
         plugins {
             id 'com.android.application' version '8.2.0' apply false
             id 'org.jetbrains.kotlin.android' version '1.9.20' apply false
         }
         EOF
+
+    # ---------------------------------------------------------
+    # 2. GERAR GRADLE WRAPPER
+    # ---------------------------------------------------------
+    - name: Init Gradle Wrapper
+      run: |
+        # Agora que settings.gradle existe, podemos rodar isso.
+        # Usamos o gradle do sistema (9.x) para baixar o 8.5 que é compatível com AGP.
+        gradle wrapper --gradle-version 8.5
+
+    # ---------------------------------------------------------
+    # 3. CRIAR MÓDULO APP E ESTRUTURA DE DIRETÓRIOS
+    # ---------------------------------------------------------
+    - name: Create App Structure
+      run: |
+        mkdir -p app/src/main/cpp
+        mkdir -p app/src/main/java/com/mednes/android
+        mkdir -p app/src/main/res/layout
+        mkdir -p app/src/main/res/values
 
         # app/build.gradle
         cat <<EOF > app/build.gradle
@@ -160,6 +125,11 @@ jobs:
                 }
             }
         }
+        
+        dependencies {
+            implementation 'androidx.core:core-ktx:1.12.0'
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+        }
         EOF
 
         # AndroidManifest.xml
@@ -167,6 +137,7 @@ jobs:
         <?xml version="1.0" encoding="utf-8"?>
         <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+            <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
             <application
                 android:label="MedNES"
                 android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
@@ -184,7 +155,39 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 6. CRIAR CÓDIGO C++ (JNI)
+    # 4. COPIAR CÓDIGO FONTE DO MEDNES
+    # ---------------------------------------------------------
+    - name: Copy Source Core
+      run: |
+        # Copia a pasta Source/Core para dentro da pasta C++ do Android
+        cp -r Source/Core app/src/main/cpp/Core
+        ls -R app/src/main/cpp/Core
+
+    # ---------------------------------------------------------
+    # 5. PATCH: REMOVER DEPENDÊNCIA DO SDL
+    # ---------------------------------------------------------
+    - name: Patch SDL Dependency
+      run: |
+        # Cria FakeSDL.hpp
+        cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
+        #pragma once
+        #include <stdint.h>
+        typedef int32_t SDL_Keycode;
+        #define SDLK_a 97
+        #define SDLK_b 98
+        #define SDLK_SPACE 32
+        #define SDLK_RETURN 13
+        #define SDLK_UP 1073741906
+        #define SDLK_DOWN 1073741905
+        #define SDLK_LEFT 1073741904
+        #define SDLK_RIGHT 1073741903
+        EOF
+
+        # Substitui o include no Controller.hpp
+        sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
+
+    # ---------------------------------------------------------
+    # 6. CRIAR CÓDIGO C++ (JNI e CMake)
     # ---------------------------------------------------------
     - name: Create C++ Native Interface
       run: |
@@ -212,11 +215,10 @@ jobs:
         target_include_directories(mednes PRIVATE Core)
         find_library(log-lib log)
         find_library(android-lib android)
-        # Linka a biblioteca jnigraphics necessária para manipular Bitmaps
         target_link_libraries(mednes \${log-lib} \${android-lib} jnigraphics)
         EOF
 
-        # native-lib.cpp
+        # native-lib.cpp (A Ponte entre Java e C++)
         cat <<EOF > app/src/main/cpp/native-lib.cpp
         #include <jni.h>
         #include <string>
@@ -228,6 +230,7 @@ jobs:
         #include "Core/PPU.hpp"
         #include "Core/ROM.hpp"
 
+        // Mapeamento
         #define KEY_A 97
         #define KEY_B 98
         #define KEY_SELECT 32
@@ -246,36 +249,55 @@ jobs:
         extern "C" JNIEXPORT jboolean JNICALL
         Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
             const char *path = env->GetStringUTFChars(romPath, 0);
+            
+            // Limpa anterior
             if (objRom != nullptr) {
-                delete objCpu; delete objController; delete objPpu; delete objMapper; delete objRom;
+                // Ordem de deleção importante para evitar crash
+                if(objCpu) delete objCpu; 
+                if(objController) delete objController; 
+                if(objPpu) delete objPpu; 
+                if(objMapper) delete objMapper; 
+                if(objRom) delete objRom;
+                objRom = nullptr; objCpu = nullptr;
             }
+
             objRom = new MedNES::ROM();
             try {
                 objRom->open(std::string(path));
             } catch (...) {
+                env->ReleaseStringUTFChars(romPath, path);
                 return false;
             }
+            
             objMapper = objRom->getMapper();
-            if (!objMapper) return false;
+            if (!objMapper) {
+                env->ReleaseStringUTFChars(romPath, path);
+                return false;
+            }
+
             objPpu = new MedNES::PPU(objMapper);
             objController = new MedNES::Controller();
             objCpu = new MedNES::CPU6502(objMapper, objPpu, objController);
             objCpu->reset();
+
             env->ReleaseStringUTFChars(romPath, path);
             return true;
         }
 
         extern "C" JNIEXPORT void JNICALL
         Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
-            if (!objCpu) return;
+            if (!objCpu || !objPpu) return;
+            
+            // Executa até completar um frame
             while (!objPpu->generateFrame) { objCpu->step(); }
             objPpu->generateFrame = false;
 
             void* pixels;
             if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
             
-            // MedNES buffer: uint32_t (ARGB ou ABGR dependendo da endianess)
-            // Copia direta para o Bitmap
+            // Copia buffer do PPU (256x240)
+            // O buffer do MedNES é uint32_t. 
+            // Nota: Pode haver inversão de cores (R/B) dependendo do endianness, mas para teste inicial memcpy é o mais rápido.
             memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
             
             AndroidBitmap_unlockPixels(env, bitmap);
@@ -329,6 +351,7 @@ jobs:
         import android.widget.TextView
         import androidx.appcompat.app.AppCompatActivity
         import java.io.File
+        import android.os.Environment
 
         class MainActivity : AppCompatActivity() {
             private lateinit var screen: ImageView
@@ -343,23 +366,24 @@ jobs:
                 screen = findViewById(R.id.emulatorScreen)
                 status = findViewById(R.id.statusText)
                 
+                // Cria bitmap 256x240 (resolução nativa NES)
                 emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
                 screen.setImageBitmap(emuBitmap)
 
-                // Procura ROM no armazenamento externo padrão
-                val path = "/sdcard/Download/rom.nes" 
-                val file = File(path)
+                // Busca ROM no diretório de Downloads público
+                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val romFile = File(downloadDir, "rom.nes")
                 
-                if (file.exists()) {
-                    if (MedNESJni.loadRom(path)) {
+                if (romFile.exists()) {
+                    if (MedNESJni.loadRom(romFile.absolutePath)) {
                         isRunning = true
                         status.visibility = android.view.View.GONE
                         gameLoop()
                     } else {
-                        status.text = "Load Failed"
+                        status.text = "Load Failed: " + romFile.absolutePath
                     }
                 } else {
-                    status.text = "Place ROM at: /sdcard/Download/rom.nes"
+                    status.text = "Put rom.nes in Downloads folder"
                 }
 
                 setupBtn(R.id.btnA, 0)
@@ -374,12 +398,10 @@ jobs:
             
             private fun setupBtn(id: Int, key: Int) {
                 val btn = findViewById<Button>(id)
-                if (btn != null) {
-                    btn.setOnTouchListener { _, event ->
-                        if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
-                        if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
-                        true
-                    }
+                btn?.setOnTouchListener { _, event ->
+                    if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
+                    if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
+                    true
                 }
             }
 
@@ -387,12 +409,13 @@ jobs:
                 if (!isRunning) return
                 MedNESJni.stepFrame(emuBitmap!!)
                 screen.invalidate()
+                // 16ms ~ 60fps
                 handler.postDelayed({ gameLoop() }, 16)
             }
         }
         EOF
 
-        # Layout XML (Completo com D-PAD)
+        # Layout XML
         cat <<EOF > app/src/main/res/layout/activity_main.xml
         <?xml version="1.0" encoding="utf-8"?>
         <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -415,51 +438,35 @@ jobs:
                 android:textColor="#FFFFFF"
                 android:layout_centerInParent="true"/>
 
-            <!-- D-PAD (Esquerda) -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_alignParentBottom="true"
-                android:layout_alignParentStart="true"
-                android:padding="20dp">
+            <!-- D-PAD -->
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_alignParentBottom="true" android:layout_alignParentStart="true" android:padding="20dp">
                 <Button android:id="@+id/btnUp" android:text="^" android:layout_width="60dp" android:layout_height="60dp" android:layout_gravity="center_horizontal"/>
                 <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
-                    <Button android:id="@+id/btnLeft" android:text="&lt;" android:layout_width="60dp" android:layout_height="60dp"/>
+                    <Button android:id="@+id/btnLeft" android:text="<" android:layout_width="60dp" android:layout_height="60dp"/>
                     <Button android:id="@+id/btnDown" android:text="v" android:layout_width="60dp" android:layout_height="60dp"/>
-                    <Button android:id="@+id/btnRight" android:text="&gt;" android:layout_width="60dp" android:layout_height="60dp"/>
+                    <Button android:id="@+id/btnRight" android:text=">" android:layout_width="60dp" android:layout_height="60dp"/>
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Botões de Ação (Direita) -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_alignParentBottom="true"
-                android:layout_alignParentEnd="true"
-                android:padding="30dp">
+            <!-- A/B -->
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:layout_alignParentBottom="true" android:layout_alignParentEnd="true" android:padding="30dp">
                 <Button android:id="@+id/btnB" android:text="B" android:layout_width="70dp" android:layout_height="70dp" android:layout_marginEnd="10dp"/>
                 <Button android:id="@+id/btnA" android:text="A" android:layout_width="70dp" android:layout_height="70dp"/>
             </LinearLayout>
 
-            <!-- Select / Start (Centro) -->
-             <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_alignParentBottom="true"
-                android:layout_centerHorizontal="true"
-                android:paddingBottom="10dp">
-                <Button android:id="@+id/btnSelect" android:text="Sel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="10sp"/>
-                <Button android:id="@+id/btnStart" android:text="Sta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="10sp"/>
+            <!-- Select/Start -->
+             <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" android:paddingBottom="10dp">
+                <Button android:id="@+id/btnSelect" android:text="Sel" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <Button android:id="@+id/btnStart" android:text="Sta" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             </LinearLayout>
-
         </RelativeLayout>
         EOF
 
     # ---------------------------------------------------------
-    # 8. COMPILAR (Usando ./gradlew)
+    # 8. COMPILAR
     # ---------------------------------------------------------
     - name: Build with Gradle
       run: |
@@ -467,7 +474,7 @@ jobs:
         ./gradlew assembleDebug
 
     # ---------------------------------------------------------
-    # 9. UPLOAD DO APK (v4)
+    # 9. UPLOAD (V4 FIXED)
     # ---------------------------------------------------------
     - name: Upload APK
       uses: actions/upload-artifact@v4
