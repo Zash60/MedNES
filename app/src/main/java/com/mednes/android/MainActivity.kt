@@ -16,9 +16,10 @@ import android.widget.TextView
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
+
 class MainActivity : Activity(), SurfaceHolder.Callback {
 
-    private lateinit var surfaceView: SurfaceView
+    private lateinit var surfaceView: AspectSurfaceView  // <-- Change to custom class
     private lateinit var statusText: TextView
     private lateinit var fpsText: TextView
     
