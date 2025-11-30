@@ -26,6 +26,7 @@ MedNES::CPU6502* objCpu = nullptr;
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
     const char *path = env->GetStringUTFChars(romPath, 0);
+    
     if (objRom != nullptr) {
         if(objCpu) delete objCpu; 
         if(objController) delete objController; 
@@ -34,22 +35,40 @@ Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath)
         if(objRom) delete objRom;
         objRom = nullptr; objCpu = nullptr;
     }
+
     objRom = new MedNES::ROM();
+    
+    // Tenta abrir o arquivo
     try {
         objRom->open(std::string(path));
     } catch (...) {
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
-    objMapper = objRom->getMapper();
-    if (!objMapper) {
+
+    // --- CORREÇÃO DO CRASH ---
+    // Verifica se a ROM tem dados. Se estiver vazia (falha de leitura/permissão), retorna erro.
+    if (objRom->getPrgCode().empty()) {
+        __android_log_print(ANDROID_LOG_ERROR, "MedNES", "CRASH PREVENIDO: ROM vazia ou sem permissão de leitura em: %s", path);
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
+    // -------------------------
+
+    objMapper = objRom->getMapper();
+    if (!objMapper) {
+        __android_log_print(ANDROID_LOG_ERROR, "MedNES", "Mapper não suportado ou inválido.");
+        env->ReleaseStringUTFChars(romPath, path);
+        return false;
+    }
+
     objPpu = new MedNES::PPU(objMapper);
     objController = new MedNES::Controller();
     objCpu = new MedNES::CPU6502(objMapper, objPpu, objController);
+    
+    // Agora é seguro resetar, pois a memória está alocada
     objCpu->reset();
+
     env->ReleaseStringUTFChars(romPath, path);
     return true;
 }
@@ -57,14 +76,13 @@ Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath)
 extern "C" JNIEXPORT void JNICALL
 Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
     if (!objCpu || !objPpu) return;
+    
     while (!objPpu->generateFrame) { objCpu->step(); }
     objPpu->generateFrame = false;
 
     void* pixels;
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
-    
     memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
-    
     AndroidBitmap_unlockPixels(env, bitmap);
 }
 
