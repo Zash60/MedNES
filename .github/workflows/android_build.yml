@@ -19,7 +19,7 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # CONFIGURAÇÃO CRÍTICA: Força Gradle 8.2 para compatibilidade com AGP 8.1
+    # CONFIGURAÇÃO CRÍTICA: Força Gradle 8.2
     - name: Setup Gradle 8.2
       uses: gradle/actions/setup-gradle@v3
       with:
@@ -40,9 +40,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Copy Source Core
       run: |
-        # Copia o núcleo do emulador
         cp -r Source/Core app/src/main/cpp/Core
-        # Verifica se copiou
         ls -R app/src/main/cpp/Core
 
     # ---------------------------------------------------------
@@ -50,7 +48,6 @@ jobs:
     # ---------------------------------------------------------
     - name: Patch SDL Dependency
       run: |
-        # Cria header falso para substituir SDL.h
         cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
         #pragma once
         #include <stdint.h>
@@ -65,14 +62,19 @@ jobs:
         #define SDLK_RIGHT 1073741903
         EOF
 
-        # Substitui o include no Controller.hpp
         sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
 
     # ---------------------------------------------------------
-    # 4. GERAR ARQUIVOS GRADLE (VERSÕES LTS ESTÁVEIS)
+    # 4. GERAR ARQUIVOS GRADLE (CORREÇÃO AQUI)
     # ---------------------------------------------------------
     - name: Generate Gradle Config
       run: |
+        # gradle.properties (CORREÇÃO DO ERRO ANDROIDX)
+        cat <<EOF > gradle.properties
+        android.useAndroidX=true
+        android.enableJetifier=true
+        EOF
+
         # settings.gradle
         cat <<EOF > settings.gradle
         pluginManagement {
@@ -93,7 +95,7 @@ jobs:
         include ':app'
         EOF
 
-        # build.gradle (Raiz) - AGP 8.1.4 e Kotlin 1.9.0 funcionam perfeitamente com Gradle 8.2
+        # build.gradle (Raiz)
         cat <<EOF > build.gradle
         plugins {
             id 'com.android.application' version '8.1.4' apply false
@@ -268,16 +270,12 @@ jobs:
         extern "C" JNIEXPORT void JNICALL
         Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
             if (!objCpu || !objPpu) return;
-            // Executa frame
             while (!objPpu->generateFrame) { objCpu->step(); }
             objPpu->generateFrame = false;
 
             void* pixels;
             if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
-            
-            // Cópia de memória do buffer PPU
             memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
-            
             AndroidBitmap_unlockPixels(env, bitmap);
         }
 
