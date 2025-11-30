@@ -3,14 +3,27 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-    
-    <ImageView
-        android:id="@+id/emulatorScreen"
+
+    <!-- MUDANÇA: SurfaceView é muito mais rápido para jogos -->
+    <SurfaceView
+        android:id="@+id/emulatorSurface"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_centerInParent="true"
-        android:scaleType="fitCenter" />
-    
+        android:layout_centerInParent="true" />
+
+    <!-- CONTADOR DE FPS -->
+    <TextView
+        android:id="@+id/fpsText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="FPS: 0"
+        android:textColor="#00FF00"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true"
+        android:padding="16dp"/>
+
     <TextView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
@@ -19,6 +32,7 @@
         android:textColor="#FFFFFF"
         android:layout_centerInParent="true"/>
 
+    <!-- D-PAD -->
     <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:orientation="vertical" android:layout_alignParentBottom="true" android:layout_alignParentStart="true" android:padding="20dp">
         <Button android:id="@+id/btnUp" android:text="^" android:layout_width="60dp" android:layout_height="60dp" android:layout_gravity="center_horizontal"/>
