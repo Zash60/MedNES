@@ -3,9 +3,10 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
 
+    <!-- MUDANÇA: Use o tema nativo do Android -->
     <application
         android:label="MedNES"
-        android:theme="@style/Theme.MedNES"> <!-- AQUI: Usa o tema criado no passo 1 -->
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
         
         <activity
             android:name=".MainActivity"
