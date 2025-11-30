@@ -90,51 +90,67 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun startGameLoop(holder: SurfaceHolder) {
-        isRunning.set(true)
-        gameThread = Thread {
-            val paint = Paint() // Sem filtro para manter o visual pixelado retro e performance
-            lastFpsTime = System.currentTimeMillis()
+    isRunning.set(true)
+    gameThread = Thread {
+        val paint = Paint()
+        lastFpsTime = System.currentTimeMillis()
+        
+        // Prioridade máxima para render thread (crucial para 60 FPS)
+        Thread.currentThread().priority = Thread.MAX_PRIORITY
+        
+        // Limiter preciso: 1/60s = 16.666ms em ns
+        val targetFrameNs = 16_666_667L
+        var nextFrameTimeNs = System.nanoTime()
 
-            while (isRunning.get()) {
-                val frameStart = System.nanoTime()
+        while (isRunning.get()) {
+            val frameStartNs = System.nanoTime()
 
-                // 1. Processamento Nativo (C++)
-                MedNESJni.stepFrame(emuBitmap!!)
+            // 1. Emulação nativa
+            MedNESJni.stepFrame(emuBitmap!!)
 
-                // 2. Desenho na Tela (Hardware Scaler fará o trabalho pesado)
-                val canvas = holder.lockCanvas()
-                if (canvas != null) {
-                    // Como definimos setFixedSize, desenhamos em 0,0 e ele preenche tudo
-                    canvas.drawBitmap(emuBitmap!!, 0f, 0f, paint)
-                    holder.unlockCanvasAndPost(canvas)
-                }
+            // 2. Render (hardware upscale rápido)
+            val canvas = holder.lockCanvas()
+            if (canvas != null) {
+                canvas.drawBitmap(emuBitmap!!, 0f, 0f, paint)
+                holder.unlockCanvasAndPost(canvas)
+            }
 
-                // 3. Contador de FPS
-                fpsCounter++
-                val now = System.currentTimeMillis()
-                if (now - lastFpsTime >= 1000) {
-                    val fps = fpsCounter
-                    fpsCounter = 0
-                    lastFpsTime = now
-                    runOnUiThread {
-                        fpsText.text = "FPS: $fps"
-                    }
-                }
-                
-                // 4. Limitador de FPS (aprox 60 FPS)
-                val frameTimeNs = System.nanoTime() - frameStart
-                val frameTimeMs = frameTimeNs / 1000000
-                if (frameTimeMs < 16) {
-                    try {
-                        Thread.sleep(16 - frameTimeMs)
-                    } catch (e: InterruptedException) {
-                        // Thread interrompida
-                    }
-                }
+            // 3. FPS counter (mantido igual)
+            fpsCounter++
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - lastFpsTime >= 1000) {
+                val fps = fpsCounter
+                fpsCounter = 0
+                lastFpsTime = nowMs
+                runOnUiThread { fpsText.text = "FPS: $fps" }
+            }
+            
+            // 4. **NOVO: Limiter preciso com drift correction**
+            val elapsedNs = System.nanoTime() - frameStartNs
+            nextFrameTimeNs += targetFrameNs
+            var sleepUntilNs = nextFrameTimeNs - System.nanoTime()
+            
+            // Correção de drift (acumula erro <1 frame)
+            if (sleepUntilNs > targetFrameNs) sleepUntilNs = targetFrameNs
+            
+            // Sleep inteligente: ms principal + micro ajuste
+            if (sleepUntilNs > 2_000_000L) {  // >2ms
+                val sleepMs = (sleepUntilNs / 1_000_000L).toLong()
+                try {
+                    Thread.sleep(sleepMs)
+                } catch (e: InterruptedException) { }
+                sleepUntilNs -= sleepMs * 1_000_000L
+            }
+            
+            // Busy-wait mínimo para sub-ms (evita CPU 100%, mas preciso)
+            while (sleepUntilNs > 0 && isRunning.get()) {
+                Thread.yield()
+                sleepUntilNs = nextFrameTimeNs - System.nanoTime()
             }
         }
-        gameThread?.start()
     }
+    gameThread?.start()
+}
 
     private fun setupControls() {
         setupBtn(R.id.btnA, 0)
