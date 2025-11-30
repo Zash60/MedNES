@@ -8,10 +8,9 @@
 #include "Core/PPU.hpp"
 #include "Core/ROM.hpp"
 
-#define LOG_TAG "MedNES_Native"
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "MedNES", __VA_ARGS__)
 
-// Mapeamento de botões
+// Mapping
 #define KEY_A 97
 #define KEY_B 98
 #define KEY_SELECT 32
@@ -31,32 +30,32 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
     const char *path = env->GetStringUTFChars(romPath, 0);
     
-    // Limpeza segura
-    if (objCpu) { delete objCpu; objCpu = nullptr; }
-    if (objController) { delete objController; objController = nullptr; }
-    if (objPpu) { delete objPpu; objPpu = nullptr; }
-    if (objMapper) { delete objMapper; objMapper = nullptr; }
-    if (objRom) { delete objRom; objRom = nullptr; }
+    if (objRom != nullptr) {
+        if(objCpu) delete objCpu; 
+        if(objController) delete objController; 
+        if(objPpu) delete objPpu; 
+        if(objMapper) delete objMapper; 
+        if(objRom) delete objRom;
+        objRom = nullptr; objCpu = nullptr;
+    }
 
     objRom = new MedNES::ROM();
-    
     try {
         objRom->open(std::string(path));
     } catch (...) {
-        LOGE("Falha ao abrir arquivo: %s", path);
+        LOGE("Erro ao abrir arquivo");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
 
     if (objRom->getPrgCode().empty()) {
-        LOGE("ROM vazia ou erro de leitura.");
+        LOGE("ROM Vazia");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
 
     objMapper = objRom->getMapper();
     if (!objMapper) {
-        LOGE("Mapper não suportado.");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
@@ -74,30 +73,31 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
     if (!objCpu || !objPpu) return;
     
-    // Executa o emulador até completar um frame
+    // Executa emulação
     while (!objPpu->generateFrame) { 
         objCpu->step(); 
     }
     objPpu->generateFrame = false;
 
-    // Trava o bitmap do Android para escrever os pixels
     void* pixels;
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
-
+    
     uint32_t* src = objPpu->buffer;
     uint32_t* dst = (uint32_t*)pixels;
-    int count = 256 * 240;
-
-    // --- CORREÇÃO DE CORES E PERFORMANCE ---
-    // Converte de ABGR (MedNES) para ARGB (Android) ou vice-versa trocando R e B
-    for (int i = 0; i < count; ++i) {
-        uint32_t color = src[i];
-        // Formato: 0xAABBGGRR -> 0xAARRGGBB
-        // Mantém Alpha (FF000000) e Verde (0000FF00)
-        // Troca Azul (00FF0000) com Vermelho (000000FF)
-        dst[i] = (color & 0xFF00FF00) | ((color & 0x00FF0000) >> 16) | ((color & 0x000000FF) << 16);
+    
+    // Otimização de Loop: 256 * 240 = 61440 pixels
+    // Trocamos R e B para corrigir as cores no Android
+    for (int i = 0; i < 61440; ++i) {
+        uint32_t c = src[i];
+        // O formato MedNES parece ser 0xAABBGGRR ou 0xBBGGRRAA dependendo da endianness
+        // Android usa ARGB (0xAARRGGBB).
+        // Se o Mario estava azul, B e R estavam trocados.
+        // (c & 0xFF00FF00) mantem Alpha e Green
+        // ((c & 0x00FF0000) >> 16) move Blue para posição Red
+        // ((c & 0x000000FF) << 16) move Red para posição Blue
+        dst[i] = (c & 0xFF00FF00) | ((c & 0x00FF0000) >> 16) | ((c & 0x000000FF) << 16);
     }
-
+    
     AndroidBitmap_unlockPixels(env, bitmap);
 }
 
