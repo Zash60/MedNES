@@ -1,6 +1,5 @@
 package com.mednes.android
 
-import android.app.Activity // <--- MUDANÇA 1: Importe Activity
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.Handler
@@ -10,13 +9,11 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-// REMOVA: import androidx.appcompat.app.AppCompatActivity 
+import androidx.appcompat.app.AppCompatActivity // Usando AppCompat
 import java.io.File
 import android.os.Environment
 
-// <--- MUDANÇA 2: Herde de Activity, não AppCompatActivity
-class MainActivity : Activity() { 
-    
+class MainActivity : AppCompatActivity() {
     private lateinit var screen: ImageView
     private lateinit var status: TextView
     private var emuBitmap: Bitmap? = null
@@ -26,7 +23,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Forçar tela cheia e esconder navegação
+        // Código para esconder barra de navegação (botões virtuais) e status
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -44,6 +41,7 @@ class MainActivity : Activity() {
         emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
         screen.setImageBitmap(emuBitmap)
 
+        // Caminho padrão de downloads
         val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val romFile = File(downloadDir, "rom.nes")
         
@@ -56,7 +54,7 @@ class MainActivity : Activity() {
                 status.text = "Failed to load ROM"
             }
         } else {
-            status.text = "Place rom.nes in Downloads folder"
+            status.text = "Put rom.nes in Downloads folder"
         }
 
         setupBtn(R.id.btnA, 0)
