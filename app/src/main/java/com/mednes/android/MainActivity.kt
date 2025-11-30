@@ -1,10 +1,11 @@
 package com.mednes.android
 
+import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
+import android.graphics.PorterDuff
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -12,11 +13,10 @@ import android.view.SurfaceView
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
-class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
+class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private lateinit var surfaceView: SurfaceView
     private lateinit var statusText: TextView
@@ -26,14 +26,14 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private val isRunning = AtomicBoolean(false)
     private var gameThread: Thread? = null
     
-    // Variáveis do FPS
+    // FPS
     private var fpsCounter = 0
     private var lastFpsTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Fullscreen
+        // Fullscreen Imersivo
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -55,13 +55,18 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        // Inicializa o emulador quando a superfície é criada
+        // --- O SEGREDO DA PERFORMANCE ---
+        // Definimos o buffer interno para o tamanho nativo do NES.
+        // O hardware do Android vai esticar isso para a tela cheia automaticamente e muito rápido.
+        holder.setFixedSize(256, 240)
+        
         val appDir = getExternalFilesDir(null)
         val romFile = File(appDir, "rom.nes")
 
         if (romFile.exists()) {
             if (MedNESJni.loadRom(romFile.absolutePath)) {
                 statusText.visibility = View.GONE
+                // ARGB_8888 é o mais rápido em arquiteturas ARM modernas
                 emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
                 startGameLoop(holder)
             } else {
@@ -86,36 +91,20 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun startGameLoop(holder: SurfaceHolder) {
         isRunning.set(true)
         gameThread = Thread {
-            val srcRect = Rect(0, 0, 256, 240)
-            val dstRect = Rect()
-            val paint = Paint(Paint.FILTER_BITMAP_FLAG) // Suaviza os pixels ao escalar
-            
+            val paint = Paint() // Sem filtro para manter o visual pixelado retro e performance
             lastFpsTime = System.currentTimeMillis()
 
             while (isRunning.get()) {
-                val startTime = System.nanoTime()
+                val frameStart = System.nanoTime()
 
-                // 1. Roda o Core C++
+                // 1. Processamento Nativo (C++)
                 MedNESJni.stepFrame(emuBitmap!!)
 
-                // 2. Desenha na tela (SurfaceView)
+                // 2. Desenho na Tela (Hardware Scaler fará o trabalho pesado)
                 val canvas = holder.lockCanvas()
                 if (canvas != null) {
-                    // Ajusta escala (Aspect Ratio)
-                    val scale = Math.min(
-                        canvas.width.toFloat() / 256f,
-                        canvas.height.toFloat() / 240f
-                    )
-                    val w = (256 * scale).toInt()
-                    val h = (240 * scale).toInt()
-                    val x = (canvas.width - w) / 2
-                    val y = (canvas.height - h) / 2
-                    
-                    dstRect.set(x, y, x + w, y + h)
-                    
-                    canvas.drawColor(Color.BLACK) // Limpa fundo
-                    canvas.drawBitmap(emuBitmap!!, srcRect, dstRect, paint)
-                    
+                    // Como definimos setFixedSize, desenhamos em 0,0 e ele preenche tudo
+                    canvas.drawBitmap(emuBitmap!!, 0f, 0f, paint)
                     holder.unlockCanvasAndPost(canvas)
                 }
 
@@ -131,13 +120,16 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     }
                 }
                 
-                // Limite de ~60 FPS (opcional, remove se quiser MAX performance)
-                /*
-                val frameTimeMs = (System.nanoTime() - startTime) / 1000000
+                // 4. Limitador de FPS (aprox 60 FPS)
+                val frameTimeNs = System.nanoTime() - frameStart
+                val frameTimeMs = frameTimeNs / 1000000
                 if (frameTimeMs < 16) {
-                    try { Thread.sleep(16 - frameTimeMs) } catch (e: Exception) {}
+                    try {
+                        Thread.sleep(16 - frameTimeMs)
+                    } catch (e: InterruptedException) {
+                        // Thread interrompida
+                    }
                 }
-                */
             }
         }
         gameThread?.start()
