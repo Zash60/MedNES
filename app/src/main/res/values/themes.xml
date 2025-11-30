@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- O parent DEVE ser Theme.AppCompat.NoActionBar para corrigir o erro -->
+    <!-- O parent PRECISA ser Theme.AppCompat para funcionar com AppCompatActivity -->
     <style name="Theme.MedNES" parent="Theme.AppCompat.NoActionBar">
-        <!-- Remove título e Action Bar -->
+        <!-- Remove barra de título e action bar -->
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowActionBar">false</item>
-        <!-- Ativa Fullscreen -->
+        <item name="windowActionBar">false</item>
+        <!-- Força tela cheia -->
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
     </style>
