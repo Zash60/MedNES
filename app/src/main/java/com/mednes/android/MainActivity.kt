@@ -9,11 +9,11 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity // Importante
 import java.io.File
 import android.os.Environment
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity() { // Deve herdar de AppCompatActivity
     private lateinit var screen: ImageView
     private lateinit var status: TextView
     private var emuBitmap: Bitmap? = null
@@ -23,7 +23,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Forçar Fullscreen e Immersive Mode
+        // Código para esconder barra de navegação e status (Immersive Sticky)
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -38,11 +38,9 @@ class MainActivity : AppCompatActivity() {
         screen = findViewById(R.id.emulatorScreen)
         status = findViewById(R.id.statusText)
         
-        // Cria bitmap 256x240 (resolução nativa NES)
         emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
         screen.setImageBitmap(emuBitmap)
 
-        // Tenta carregar a ROM da pasta Downloads
         val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val romFile = File(downloadDir, "rom.nes")
         
@@ -52,7 +50,7 @@ class MainActivity : AppCompatActivity() {
                 status.visibility = View.GONE
                 gameLoop()
             } else {
-                status.text = "Load Failed"
+                status.text = "Failed to load ROM"
             }
         } else {
             status.text = "Place rom.nes in Downloads folder"
@@ -70,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun setupBtn(id: Int, key: Int) {
         val btn = findViewById<Button>(id)
+        // Verifica se o botão existe no layout antes de adicionar listener
         btn?.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
             if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
@@ -81,7 +80,6 @@ class MainActivity : AppCompatActivity() {
         if (!isRunning) return
         MedNESJni.stepFrame(emuBitmap!!)
         screen.invalidate()
-        // Loop de ~60 FPS
         handler.postDelayed({ gameLoop() }, 16)
     }
 }
