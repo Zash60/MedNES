@@ -1,29 +1,29 @@
 package com.mednes.android
 
-import android.app.Activity
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import android.os.Environment
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
+
     private lateinit var screen: ImageView
     private lateinit var status: TextView
     private var emuBitmap: Bitmap? = null
-    
-    // Controle da Thread
     private var isRunning = false
-    private var emuThread: Thread? = null
+    private var gameThread: Thread? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Fullscreen
+        // Configuração de Tela Cheia (Immersive Sticky)
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -38,24 +38,70 @@ class MainActivity : Activity() {
         screen = findViewById(R.id.emulatorScreen)
         status = findViewById(R.id.statusText)
         
-        // Config.ARGB_8888 é padrão e rápido no Android
+        // Cria o Bitmap
         emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
         screen.setImageBitmap(emuBitmap)
 
-        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val romFile = File(downloadDir, "rom.nes")
+        // --- IMPORTANTE: USO DE getExternalFilesDir ---
+        // Isso evita erros de permissão no Android 10+.
+        // O usuário deve colocar a ROM em: /sdcard/Android/data/com.mednes.android/files/rom.nes
+        val appDir = getExternalFilesDir(null)
+        val romFile = File(appDir, "rom.nes")
         
+        Log.d("MedNES", "Procurando ROM em: ${romFile.absolutePath}")
+
         if (romFile.exists()) {
+            Log.d("MedNES", "Arquivo encontrado. Tentando carregar...")
             if (MedNESJni.loadRom(romFile.absolutePath)) {
+                Log.d("MedNES", "ROM carregada com sucesso no C++")
                 status.visibility = View.GONE
-                startEmulator()
+                startGameLoop()
             } else {
-                status.text = "Failed to load ROM"
+                Log.e("MedNES", "Falha ao carregar ROM no C++")
+                status.text = "Erro: Arquivo corrompido ou mapper não suportado."
             }
         } else {
-            status.text = "Place rom.nes in Downloads folder"
+            Log.e("MedNES", "Arquivo não encontrado")
+            status.text = "Arquivo não encontrado!\nColoque 'rom.nes' em:\n${appDir?.absolutePath}"
         }
 
+        setupControls()
+    }
+    
+    private fun startGameLoop() {
+        isRunning = true
+        gameThread = Thread {
+            while (isRunning) {
+                val start = System.currentTimeMillis()
+                
+                // Roda o emulador (C++)
+                MedNESJni.stepFrame(emuBitmap!!)
+                
+                // Solicita atualização da tela
+                screen.postInvalidate()
+                
+                // Controle de FPS (aprox 60 FPS)
+                val elapsed = System.currentTimeMillis() - start
+                val wait = 16 - elapsed
+                if (wait > 0) {
+                    try { Thread.sleep(wait) } catch (e: Exception) {}
+                }
+            }
+        }
+        gameThread?.start()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isRunning = false
+        try {
+            gameThread?.join(1000)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun setupControls() {
         setupBtn(R.id.btnA, 0)
         setupBtn(R.id.btnB, 1)
         setupBtn(R.id.btnSelect, 2)
@@ -66,43 +112,8 @@ class MainActivity : Activity() {
         setupBtn(R.id.btnRight, 7)
     }
 
-    private fun startEmulator() {
-        isRunning = true
-        emuThread = Thread {
-            while (isRunning) {
-                val startTime = System.currentTimeMillis()
-
-                // 1. Roda um frame no C++ e atualiza o Bitmap
-                MedNESJni.stepFrame(emuBitmap!!)
-                
-                // 2. Avisa a tela para redesenhar (postInvalidate é seguro para chamar de outra thread)
-                screen.postInvalidate()
-
-                // 3. Controle simples de FPS (Tenta manter ~60 FPS)
-                val frameTime = System.currentTimeMillis() - startTime
-                if (frameTime < 16) {
-                    try {
-                        Thread.sleep(16 - frameTime)
-                    } catch (e: InterruptedException) {
-                        break
-                    }
-                }
-            }
-        }
-        emuThread?.start()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        isRunning = false
-        try {
-            emuThread?.join(500)
-        } catch (e: Exception) {}
-    }
-    
     private fun setupBtn(id: Int, key: Int) {
-        val btn = findViewById<Button>(id)
-        btn?.setOnTouchListener { _, event ->
+        findViewById<Button>(id)?.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
             if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
             true
