@@ -1,0 +1,411 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    # ---------------------------------------------------------
+    # 1. CRIAR ESTRUTURA DE DIRETÓRIOS DO ANDROID
+    # ---------------------------------------------------------
+    - name: Create Project Structure
+      run: |
+        mkdir -p app/src/main/cpp
+        mkdir -p app/src/main/java/com/mednes/android
+        mkdir -p app/src/main/res/layout
+        mkdir -p app/src/main/res/values
+
+    # ---------------------------------------------------------
+    # 2. COPIAR O CORE DO MEDNES
+    # ---------------------------------------------------------
+    - name: Copy Source Core
+      run: |
+        # Copia a pasta Source/Core para dentro da pasta C++ do Android
+        cp -r Source/Core app/src/main/cpp/Core
+        
+        # LISTAR ARQUIVOS PARA DEBUG
+        ls -R app/src/main/cpp/Core
+
+    # ---------------------------------------------------------
+    # 3. REMOVER DEPENDÊNCIA DO SDL (Patching)
+    # ---------------------------------------------------------
+    - name: Patch SDL Dependency
+      run: |
+        # Cria um arquivo FakeSDL.hpp para substituir o SDL.h
+        cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
+        #pragma once
+        #include <stdint.h>
+        typedef int32_t SDL_Keycode;
+        // Mapeamento interno para substituir SDL
+        #define SDLK_a 97
+        #define SDLK_b 98
+        #define SDLK_SPACE 32
+        #define SDLK_RETURN 13
+        #define SDLK_UP 1073741906
+        #define SDLK_DOWN 1073741905
+        #define SDLK_LEFT 1073741904
+        #define SDLK_RIGHT 1073741903
+        EOF
+
+        # Substitui o include no Controller.hpp
+        # De: #include <SDL.h>
+        # Para: #include "Common/FakeSDL.hpp"
+        sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
+        
+        echo "Patch aplicado com sucesso."
+
+    # ---------------------------------------------------------
+    # 4. CRIAR ARQUIVOS DE BUILD (Gradle & Manifest)
+    # ---------------------------------------------------------
+    - name: Create Build Files
+      run: |
+        # settings.gradle
+        echo "include ':app'" > settings.gradle
+
+        # build.gradle (Raiz)
+        cat <<EOF > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:7.4.2'
+                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+            }
+        }
+        allprojects {
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        EOF
+
+        # app/build.gradle
+        cat <<EOF > app/build.gradle
+        plugins {
+            id 'com.android.application'
+            id 'kotlin-android'
+        }
+
+        android {
+            namespace 'com.mednes.android'
+            compileSdk 33
+
+            defaultConfig {
+                applicationId "com.mednes.android"
+                minSdk 24
+                targetSdk 33
+                versionCode 1
+                versionName "1.0"
+                
+                externalNativeBuild {
+                    cmake {
+                        cppFlags "-std=c++14"
+                    }
+                }
+            }
+
+            buildTypes {
+                release {
+                    minifyEnabled false
+                    proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                }
+            }
+            externalNativeBuild {
+                cmake {
+                    path "src/main/cpp/CMakeLists.txt"
+                    version "3.18.1"
+                }
+            }
+        }
+        EOF
+
+        # AndroidManifest.xml
+        cat <<EOF > app/src/main/AndroidManifest.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+            <application
+                android:label="MedNES Android"
+                android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:screenOrientation="landscape">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+
+    # ---------------------------------------------------------
+    # 5. CRIAR CÓDIGO C++ (JNI & CMake)
+    # ---------------------------------------------------------
+    - name: Create C++ Native Interface
+      run: |
+        # app/src/main/cpp/CMakeLists.txt
+        cat <<EOF > app/src/main/cpp/CMakeLists.txt
+        cmake_minimum_required(VERSION 3.18.1)
+        project("mednes")
+
+        add_library(
+                mednes
+                SHARED
+                native-lib.cpp
+                Core/6502.cpp
+                Core/Controller.cpp
+                Core/PPU.cpp
+                Core/RAM.cpp
+                Core/ROM.cpp
+                Core/Mapper/CNROM.cpp
+                Core/Mapper/Mapper.cpp
+                Core/Mapper/MMC1.cpp
+                Core/Mapper/NROM.cpp
+                Core/Mapper/UnROM.cpp
+        )
+
+        target_include_directories(mednes PRIVATE Core)
+        find_library(log-lib log)
+        find_library(android-lib android)
+        target_link_libraries(mednes \${log-lib} \${android-lib})
+        EOF
+
+        # app/src/main/cpp/native-lib.cpp
+        cat <<EOF > app/src/main/cpp/native-lib.cpp
+        #include <jni.h>
+        #include <string>
+        #include <android/log.h>
+        #include <android/bitmap.h>
+        #include "Core/6502.hpp"
+        #include "Core/Controller.hpp"
+        #include "Core/PPU.hpp"
+        #include "Core/ROM.hpp"
+
+        // Definições do FakeSDL
+        #define KEY_A 97
+        #define KEY_B 98
+        #define KEY_SELECT 32
+        #define KEY_START 13
+        #define KEY_UP 1073741906
+        #define KEY_DOWN 1073741905
+        #define KEY_LEFT 1073741904
+        #define KEY_RIGHT 1073741903
+
+        MedNES::ROM* objRom = nullptr;
+        MedNES::Mapper* objMapper = nullptr;
+        MedNES::PPU* objPpu = nullptr;
+        MedNES::Controller* objController = nullptr;
+        MedNES::CPU6502* objCpu = nullptr;
+
+        extern "C" JNIEXPORT jboolean JNICALL
+        Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
+            const char *path = env->GetStringUTFChars(romPath, 0);
+            if (objRom != nullptr) {
+                delete objCpu; delete objController; delete objPpu; delete objMapper; delete objRom;
+            }
+            objRom = new MedNES::ROM();
+            try {
+                objRom->open(std::string(path));
+            } catch (...) {
+                return false;
+            }
+            objMapper = objRom->getMapper();
+            if (!objMapper) return false;
+            objPpu = new MedNES::PPU(objMapper);
+            objController = new MedNES::Controller();
+            objCpu = new MedNES::CPU6502(objMapper, objPpu, objController);
+            objCpu->reset();
+            env->ReleaseStringUTFChars(romPath, path);
+            return true;
+        }
+
+        extern "C" JNIEXPORT void JNICALL
+        Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
+            if (!objCpu) return;
+            while (!objPpu->generateFrame) { objCpu->step(); }
+            objPpu->generateFrame = false;
+
+            void* pixels;
+            if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
+            
+            // Convert MedNES 0xAABBGGRR to Android RGBA if necessary, 
+            // but for speed we assume buffer is compatible or we swap channels here.
+            // MedNES buffer is uint32_t.
+            memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
+            
+            AndroidBitmap_unlockPixels(env, bitmap);
+        }
+
+        extern "C" JNIEXPORT void JNICALL
+        Java_com_mednes_android_MedNESJni_sendInput(JNIEnv* env, jobject, jint keyId, jboolean pressed) {
+            if (!objController) return;
+            int k = 0;
+            switch(keyId) {
+                case 0: k = KEY_A; break;
+                case 1: k = KEY_B; break;
+                case 2: k = KEY_SELECT; break;
+                case 3: k = KEY_START; break;
+                case 4: k = KEY_UP; break;
+                case 5: k = KEY_DOWN; break;
+                case 6: k = KEY_LEFT; break;
+                case 7: k = KEY_RIGHT; break;
+            }
+            if (k != 0) objController->setButtonPressed(k, pressed);
+        }
+        EOF
+
+    # ---------------------------------------------------------
+    # 6. CRIAR CÓDIGO KOTLIN (UI)
+    # ---------------------------------------------------------
+    - name: Create Kotlin UI
+      run: |
+        # JNI Wrapper
+        cat <<EOF > app/src/main/java/com/mednes/android/MedNESJni.kt
+        package com.mednes.android
+        import android.graphics.Bitmap
+        object MedNESJni {
+            init { System.loadLibrary("mednes") }
+            external fun loadRom(path: String): Boolean
+            external fun stepFrame(bitmap: Bitmap)
+            external fun sendInput(keyId: Int, pressed: Boolean)
+        }
+        EOF
+
+        # Layout XML
+        cat <<EOF > app/src/main/res/layout/activity_main.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#000000">
+            
+            <ImageView
+                android:id="@+id/emulatorScreen"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter" />
+            
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Put .nes file in /sdcard/rom.nes"
+                android:textColor="#FFFFFF"
+                android:layout_centerInParent="true"/>
+
+            <!-- Controles Simples na Tela (Exemplo) -->
+            <Button android:id="@+id/btnA" android:text="A" 
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true" android:layout_alignParentEnd="true"/>
+            
+             <Button android:id="@+id/btnStart" android:text="Start" 
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true" android:layout_centerHorizontal="true"/>
+        </RelativeLayout>
+        EOF
+
+        # MainActivity
+        cat <<EOF > app/src/main/java/com/mednes/android/MainActivity.kt
+        package com.mednes.android
+        import android.graphics.Bitmap
+        import android.os.Bundle
+        import android.os.Handler
+        import android.os.Looper
+        import android.view.MotionEvent
+        import android.widget.Button
+        import android.widget.ImageView
+        import android.widget.TextView
+        import androidx.appcompat.app.AppCompatActivity
+        import java.io.File
+
+        class MainActivity : AppCompatActivity() {
+            private lateinit var screen: ImageView
+            private lateinit var status: TextView
+            private var emuBitmap: Bitmap? = null
+            private var isRunning = false
+            private val handler = Handler(Looper.getMainLooper())
+            
+            // Mapeamento simples: 0=A, 3=Start
+            
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                setContentView(R.layout.activity_main)
+                screen = findViewById(R.id.emulatorScreen)
+                status = findViewById(R.id.statusText)
+                
+                emuBitmap = Bitmap.createBitmap(256, 240, Bitmap.Config.ARGB_8888)
+                screen.setImageBitmap(emuBitmap)
+
+                // Tenta carregar um arquivo fixo para teste
+                val path = "/sdcard/rom.nes" 
+                val file = File(path)
+                
+                if (file.exists()) {
+                    if (MedNESJni.loadRom(path)) {
+                        isRunning = true
+                        status.visibility = android.view.View.GONE
+                        gameLoop()
+                    } else {
+                        status.text = "Falha ao carregar ROM"
+                    }
+                } else {
+                    status.text = "Arquivo nao encontrado: /sdcard/rom.nes"
+                }
+
+                setupBtn(R.id.btnA, 0)
+                setupBtn(R.id.btnStart, 3)
+            }
+            
+            private fun setupBtn(id: Int, key: Int) {
+                findViewById<Button>(id).setOnTouchListener { _, event ->
+                    if (event.action == MotionEvent.ACTION_DOWN) MedNESJni.sendInput(key, true)
+                    if (event.action == MotionEvent.ACTION_UP) MedNESJni.sendInput(key, false)
+                    true
+                }
+            }
+
+            private fun gameLoop() {
+                if (!isRunning) return
+                MedNESJni.stepFrame(emuBitmap!!)
+                screen.invalidate()
+                handler.postDelayed({ gameLoop() }, 16)
+            }
+        }
+        EOF
+
+    # ---------------------------------------------------------
+    # 7. COMPILAR
+    # ---------------------------------------------------------
+    - name: Build with Gradle
+      run: gradle assembleDebug
+
+    # ---------------------------------------------------------
+    # 8. UPLOAD DO APK
+    # ---------------------------------------------------------
+    - name: Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: MedNES-Android-APK
+        path: app/build/outputs/apk/debug/app-debug.apk
