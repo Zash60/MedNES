@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- O parent DEVE ser Theme.AppCompat.NoActionBar para corrigir o erro -->
+    <style name="Theme.MedNES" parent="Theme.AppCompat.NoActionBar">
+        <!-- Remove título e Action Bar -->
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <!-- Ativa Fullscreen -->
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>
