@@ -19,11 +19,14 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+    # CONFIGURAÇÃO CRÍTICA: Força Gradle 8.2 para compatibilidade com AGP 8.1
+    - name: Setup Gradle 8.2
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
 
     # ---------------------------------------------------------
-    # 1. SCAFFOLDING (CRIAR DIRETÓRIOS)
+    # 1. ESTRUTURA DE DIRETÓRIOS
     # ---------------------------------------------------------
     - name: Create Directory Structure
       run: |
@@ -31,14 +34,15 @@ jobs:
         mkdir -p app/src/main/java/com/mednes/android
         mkdir -p app/src/main/res/layout
         mkdir -p app/src/main/res/values
-        mkdir -p gradle/wrapper
 
     # ---------------------------------------------------------
-    # 2. COPIAR CÓDIGO FONTE
+    # 2. COPIAR CÓDIGO FONTE (CORE)
     # ---------------------------------------------------------
     - name: Copy Source Core
       run: |
+        # Copia o núcleo do emulador
         cp -r Source/Core app/src/main/cpp/Core
+        # Verifica se copiou
         ls -R app/src/main/cpp/Core
 
     # ---------------------------------------------------------
@@ -46,6 +50,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Patch SDL Dependency
       run: |
+        # Cria header falso para substituir SDL.h
         cat <<EOF > app/src/main/cpp/Core/Common/FakeSDL.hpp
         #pragma once
         #include <stdint.h>
@@ -60,12 +65,13 @@ jobs:
         #define SDLK_RIGHT 1073741903
         EOF
 
+        # Substitui o include no Controller.hpp
         sed -i 's|#include <SDL.h>|#include "Common/FakeSDL.hpp"|g' app/src/main/cpp/Core/Controller.hpp
 
     # ---------------------------------------------------------
-    # 4. CONFIGURAR GRADLE (VERSÕES ESTÁVEIS)
+    # 4. GERAR ARQUIVOS GRADLE (VERSÕES LTS ESTÁVEIS)
     # ---------------------------------------------------------
-    - name: Generate Gradle Files
+    - name: Generate Gradle Config
       run: |
         # settings.gradle
         cat <<EOF > settings.gradle
@@ -87,27 +93,19 @@ jobs:
         include ':app'
         EOF
 
-        # build.gradle (Raiz) - Usando AGP 8.1.4 e Kotlin 1.9.0 (Combo Estável)
+        # build.gradle (Raiz) - AGP 8.1.4 e Kotlin 1.9.0 funcionam perfeitamente com Gradle 8.2
         cat <<EOF > build.gradle
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:8.1.4'
-                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0"
-            }
+        plugins {
+            id 'com.android.application' version '8.1.4' apply false
+            id 'org.jetbrains.kotlin.android' version '1.9.0' apply false
         }
-        // Plugins bloco vazio para compatibilidade com scripts antigos
-        plugins {}
         EOF
 
         # app/build.gradle
         cat <<EOF > app/build.gradle
         plugins {
             id 'com.android.application'
-            id 'kotlin-android'
+            id 'org.jetbrains.kotlin.android'
         }
 
         android {
@@ -270,11 +268,16 @@ jobs:
         extern "C" JNIEXPORT void JNICALL
         Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
             if (!objCpu || !objPpu) return;
+            // Executa frame
             while (!objPpu->generateFrame) { objCpu->step(); }
             objPpu->generateFrame = false;
+
             void* pixels;
             if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
+            
+            // Cópia de memória do buffer PPU
             memcpy(pixels, objPpu->buffer, 256 * 240 * 4);
+            
             AndroidBitmap_unlockPixels(env, bitmap);
         }
 
@@ -297,7 +300,7 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 6. GERAR CÓDIGO KOTLIN (Interface)
+    # 6. GERAR CÓDIGO KOTLIN (UI)
     # ---------------------------------------------------------
     - name: Generate Kotlin UI
       run: |
@@ -356,7 +359,7 @@ jobs:
                         status.text = "Failed to load ROM"
                     }
                 } else {
-                    status.text = "Place rom.nes in Downloads"
+                    status.text = "Put rom.nes in Downloads folder"
                 }
 
                 setupBtn(R.id.btnA, 0)
@@ -435,20 +438,13 @@ jobs:
         EOF
 
     # ---------------------------------------------------------
-    # 7. PREPARAR E COMPILAR (FORCE GRADLE 8.2)
+    # 7. COMPILAR
     # ---------------------------------------------------------
-    - name: Setup Gradle Wrapper 8.2
-      run: |
-        # FORÇAMOS A VERSÃO 8.2 AQUI. Isso corrige o erro "HasConvention"
-        gradle wrapper --gradle-version 8.2
-
-    - name: Build Debug APK
-      run: |
-        chmod +x gradlew
-        ./gradlew assembleDebug
+    - name: Build APK
+      run: gradle assembleDebug
 
     # ---------------------------------------------------------
-    # 8. ARTEFATO
+    # 8. UPLOAD
     # ---------------------------------------------------------
     - name: Upload APK
       uses: actions/upload-artifact@v4
