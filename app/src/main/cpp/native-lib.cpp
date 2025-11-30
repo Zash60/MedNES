@@ -8,6 +8,10 @@
 #include "Core/PPU.hpp"
 #include "Core/ROM.hpp"
 
+#define LOG_TAG "MedNES_Native"
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+// Mapeamento de botões
 #define KEY_A 97
 #define KEY_B 98
 #define KEY_SELECT 32
@@ -27,30 +31,32 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
     const char *path = env->GetStringUTFChars(romPath, 0);
     
-    if (objRom != nullptr) {
-        if(objCpu) delete objCpu; 
-        if(objController) delete objController; 
-        if(objPpu) delete objPpu; 
-        if(objMapper) delete objMapper; 
-        if(objRom) delete objRom;
-        objRom = nullptr; objCpu = nullptr;
-    }
+    // Limpeza segura
+    if (objCpu) { delete objCpu; objCpu = nullptr; }
+    if (objController) { delete objController; objController = nullptr; }
+    if (objPpu) { delete objPpu; objPpu = nullptr; }
+    if (objMapper) { delete objMapper; objMapper = nullptr; }
+    if (objRom) { delete objRom; objRom = nullptr; }
 
     objRom = new MedNES::ROM();
+    
     try {
         objRom->open(std::string(path));
     } catch (...) {
+        LOGE("Falha ao abrir arquivo: %s", path);
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
-    
+
     if (objRom->getPrgCode().empty()) {
+        LOGE("ROM vazia ou erro de leitura.");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
 
     objMapper = objRom->getMapper();
     if (!objMapper) {
+        LOGE("Mapper não suportado.");
         env->ReleaseStringUTFChars(romPath, path);
         return false;
     }
@@ -68,25 +74,27 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
     if (!objCpu || !objPpu) return;
     
-    // Executa o núcleo (PPU/CPU) até completar um quadro
-    while (!objPpu->generateFrame) { objCpu->step(); }
+    // Executa o emulador até completar um frame
+    while (!objPpu->generateFrame) { 
+        objCpu->step(); 
+    }
     objPpu->generateFrame = false;
 
+    // Trava o bitmap do Android para escrever os pixels
     void* pixels;
-    // Trava o bitmap para escrita
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
-    
+
     uint32_t* src = objPpu->buffer;
     uint32_t* dst = (uint32_t*)pixels;
     int count = 256 * 240;
 
-    // --- CORREÇÃO DE CORES ---
-    // O buffer original provavelmente está em 0xAABBGGRR, mas o Android quer 0xAARRGGBB (ou vice-versa).
-    // Este loop troca o canal Vermelho pelo Azul.
+    // --- CORREÇÃO DE CORES E PERFORMANCE ---
+    // Converte de ABGR (MedNES) para ARGB (Android) ou vice-versa trocando R e B
     for (int i = 0; i < count; ++i) {
         uint32_t color = src[i];
-        // Mantém Alpha e Green, troca Red e Blue
-        // Formato: AARRGGBB <-> AABBGGRR
+        // Formato: 0xAABBGGRR -> 0xAARRGGBB
+        // Mantém Alpha (FF000000) e Verde (0000FF00)
+        // Troca Azul (00FF0000) com Vermelho (000000FF)
         dst[i] = (color & 0xFF00FF00) | ((color & 0x00FF0000) >> 16) | ((color & 0x000000FF) << 16);
     }
 
