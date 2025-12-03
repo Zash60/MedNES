@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <vector>
 
 #include "Common/Typedefs.hpp"
 #include "INESBus.hpp"
@@ -46,7 +47,10 @@ struct SpriteRenderEntity {
 
 class PPU : public INESBus {
    public:
-    PPU(Mapper *mapper) : mapper(mapper){};
+    PPU(Mapper *mapper) : mapper(mapper){
+        // Reserva memória para evitar realocações durante a emulação
+        spriteRenderEntities.reserve(8);
+    };
 
     //cpu address space
     u8 read(u16 address);
@@ -61,7 +65,8 @@ class PPU : public INESBus {
     u8 readOAM(int);
     bool genNMI();
     bool generateFrame;
-    void printState();
+    
+    // Buffer público para o JNI acessar diretamente
     uint32_t buffer[256 * 240] = {0};
 
    private:
@@ -120,15 +125,18 @@ class PPU : public INESBus {
     u8 ppu_read_buffer = 0;
     u8 ppu_read_buffer_cpy = 0;
 
+    // Paleta NES NTSC padrão convertida para 0xAABBGGRR (Android Bitmap Little Endian)
+    // Isso permite memcpy direto no JNI.
     u32 palette[64] = {
-        4283716692, 4278197876, 4278718608, 4281335944, 4282646628, 4284219440, 4283696128, 4282128384,
-        4280297984, 4278729216, 4278206464, 4278205440, 4278202940, 4278190080, 4278190080, 4278190080,
-        4288190104, 4278734020, 4281348844, 4284227300, 4287108272, 4288681060, 4288160288, 4286069760,
-        4283718144, 4280840704, 4278746112, 4278220328, 4278216312, 4278190080, 4278190080, 4278190080,
-        4293717740, 4283210476, 4286086380, 4289749740, 4293154028, 4293679284, 4293683812, 4292118560,
-        4288719360, 4285842432, 4283224096, 4281912428, 4281906380, 4282137660, 4278190080, 4278190080,
-        4293717740, 4289252588, 4290559212, 4292129516, 4293701356, 4293701332, 4293702832, 4293182608,
-        4291613304, 4290043512, 4289258128, 4288209588, 4288730852, 4288717472, 4278190080, 4278190080};
+        0xFF7C7C7C, 0xFFFC0000, 0xFFBC0000, 0xFFBC2844, 0xFF840094, 0xFF2000A8, 0xFF0010A8, 0xFF001488,
+        0xFF003050, 0xFF007800, 0xFF006800, 0xFF005800, 0xFF584000, 0xFF000000, 0xFF000000, 0xFF000000,
+        0xFFBCBCBC, 0xFFF87800, 0xFFF85800, 0xFFE44468, 0xFFCC0094, 0xFF5800E4, 0xFF0038F8, 0xFF105CE4,
+        0xFF007CAC, 0xFF00B800, 0xFF00A800, 0xFF44A800, 0xFF888800, 0xFF000000, 0xFF000000, 0xFF000000,
+        0xFFF8F8F8, 0xFFFCBC3C, 0xFFFC8868, 0xFFF87898, 0xFFF878F8, 0xFF9858F8, 0xFF5878F8, 0xFF44A0FC,
+        0xFF00B8F8, 0xFF18F8B8, 0xFF54D858, 0xFF98F858, 0xFFD8E800, 0xFF787878, 0xFF000000, 0xFF000000,
+        0xFFFCFCFC, 0xFFFCE4A4, 0xFFF8B8B8, 0xFFF8A8D8, 0xFFF8A8F8, 0xFFC0A4F8, 0xFFB0D0F8, 0xFFA8E0FC,
+        0xFF78D8F8, 0xFF78F8D8, 0xFFB8F8B8, 0xFFD8F8B8, 0xFFFCE0B0, 0xFFC0C0C0, 0xFF000000, 0xFF000000
+    };
 
     //BG
     u8 bg_palette[16] = {0};
@@ -155,9 +163,7 @@ class PPU : public INESBus {
     int inRangeCycles = 8;
     int spriteHeight = 8;
 
-    // Optimized: Replaced Vector with fixed array
-    SpriteRenderEntity spriteRenderEntities[8];
-    int spriteCount = 0;
+    std::vector<SpriteRenderEntity> spriteRenderEntities;
     SpriteRenderEntity out;
 
     Mapper *mapper;
