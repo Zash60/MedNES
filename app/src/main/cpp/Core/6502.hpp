@@ -10,6 +10,7 @@
 #include "Mapper/Mapper.hpp"
 #include "PPU.hpp"
 #include "RAM.hpp"
+#include "APU.hpp" // <--- NOVO INCLUDE
 
 namespace MedNES {
 
@@ -28,7 +29,7 @@ class CPU6502 {
         READ,
         WRITE
     };
-
+    
     enum StatusFlags {
         NEGATIVE = 7,
         OVERFLO = 6,
@@ -41,7 +42,10 @@ class CPU6502 {
     };
 
    public:
-    CPU6502(Mapper *mapper, PPU *ppu, Controller *controller) : mapper(mapper), ppu(ppu), controller(controller){};
+    // Adicionado APU* ao construtor
+    CPU6502(Mapper *mapper, PPU *ppu, APU* apu, Controller *controller) 
+        : mapper(mapper), ppu(ppu), apu(apu), controller(controller){};
+        
     u8 fetchInstruction();
     void executeInstruction(u8 instruction);
     u8 memoryAccess(MemoryAccessMode mode, u16 address, u8 data);
@@ -54,26 +58,28 @@ class CPU6502 {
     ExecutionState *getExecutionState();
 
    private:
-    //Arithmetic
     u8 accumulator = 0;
     u8 xRegister = 0;
     u8 yRegister = 0;
 
-    //Other
     u16 programCounter = 0;
     u8 stackPointer = 0xFD;
     u8 statusRegister = 0x24;
 
     int cycle = 7;
 
-    //Devices
     RAM ram;
     Mapper *mapper;
     PPU *ppu;
+    APU *apu; // <--- NOVO PONTEIRO
     Controller *controller;
 
     std::stringstream execLog;
 
+    // ... (MANTENHA TODOS OS MÉTODOS INLINE E PRIVADOS IGUAIS AO ARQUIVO ANTERIOR) ...
+    // Estou omitindo as definições repetidas para economizar espaço, 
+    // mas mantenha todas as funções void ADC, AND, etc. exatamente como estavam.
+    
     inline void setSRFlag(StatusFlags, bool);
     inline void setNegative(bool);
     inline void setOverflow(bool);
@@ -83,23 +89,15 @@ class CPU6502 {
     inline void setInterruptDisable(bool);
     inline void setZero(bool);
     inline void setCarry(bool);
-
-    //vectors
     inline void irq();
     inline void NMI();
-
     inline void LOG_EXEC(u8 instr);
     inline void LOG_PC();
     inline void LOG_CPU_STATE();
     inline void PRINT_LOG();
-
     inline void tick();
-
-    //stack
     void pushStack(u8);
     u8 popStack();
-
-    //addressing - return address
     u16 immediate();
     u16 zeroPage();
     u16 zeroPageX();
@@ -110,15 +108,9 @@ class CPU6502 {
     u16 indirectX();
     u16 indirectY(bool);
     u16 relative();
-
-    // Opcodes - Direct Values or Addresses
     void ADC(u8); 
     void AND(u8);
-    
-    // ASL
     u8 ASL_val(u8);
-
-    // Branch Helpers
     void commonBranchLogic(bool, u16);
     void BCC(u16);
     void BCS(u16);
@@ -128,73 +120,52 @@ class CPU6502 {
     void BPL(u16);
     void BVC(u16);
     void BVS(u16);
-
-    void BIT(u16); // Reads memory inside
+    void BIT(u16);
     void BRK();
-    
     void CLC();
     void CLD();
     void CLI();
     void CLV();
-
     void CMP(u8);
     void CPX(u8);
     void CPY(u8);
-
     u8 DEC_val(u8);
     void DEX();
     void DEY();
-
     void EOR(u8);
-
     u8 INC_val(u8);
     void INX();
     void INY();
-
-    void JMP(u16); // Absolute
-    void JMP_Indirect(); // Indirect logic inside
-
+    void JMP(u16);
+    void JMP_Indirect();
     void JSR(u16);
-
     void LDA(u8);
     void LDX(u8);
     void LDY(u8);
-
     u8 LSR_val(u8);
-
-    void NOP(); // Standard NOP
+    void NOP();
     void ORA(u8);
-
     void PHA();
     void PHP();
     void PLA();
     void PLP();
-
     u8 ROL_val(u8);
     u8 ROR_val(u8);
-
     void RTI();
     void RTS();
-
     void SBC(u8);
-
     void SEC();
     void SED();
     void SEI();
-
-    // Stores take address
     void STA(u16);
     void STX(u16);
     void STY(u16);
-
     void TAX();
     void TAY();
     void TSX();
     void TXA();
     void TXS();
     void TYA();
-
-    // Unofficial Helpers
     void LAX(u16);
     void SAX(u16);
     void DCP(u16);
@@ -203,9 +174,7 @@ class CPU6502 {
     void RLA(u16);
     void RRA(u16);
     void SRE(u16);
-
     void tickIfToNewPage(u16, u16);
-
     inline void pushPC();
 };
 
