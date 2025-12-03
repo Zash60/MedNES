@@ -26,8 +26,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var emuBitmap: Bitmap? = null
     private val isRunning = AtomicBoolean(false)
     private var gameThread: Thread? = null
-    private var audioThread: Thread? = null // NOVA THREAD
-    private var audioTrack: AudioTrack? = null // NOVO TRACK
+    private var audioThread: Thread? = null 
+    private var audioTrack: AudioTrack? = null 
     
     // FPS
     private var fpsCounter = 0
@@ -36,6 +36,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Fullscreen Imersivo
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -57,6 +58,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
+        // Buffer fixo 256x240 para performance nativa
         holder.setFixedSize(256, 240)
         
         val appDir = getExternalFilesDir(null)
@@ -81,7 +83,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         isRunning.set(false)
         try {
             gameThread?.join()
-            audioThread?.join() // Join audio
+            audioThread?.join()
         } catch (e: InterruptedException) {
             e.printStackTrace()
         }
@@ -89,7 +91,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun startEmulator(holder: SurfaceHolder) {
         isRunning.set(true)
-        startAudio() // Inicia audio
+        startAudio()
         startGameLoop(holder)
     }
 
@@ -101,6 +103,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             AudioFormat.ENCODING_PCM_16BIT
         )
 
+        // Configuração compatível com Android novo e antigo
         audioTrack = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             AudioTrack.Builder()
                 .setAudioAttributes(AudioAttributes.Builder()
@@ -129,20 +132,26 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         audioTrack?.play()
 
         audioThread = Thread {
-            val audioBuffer = ShortArray(1024)
+            // Buffer temporário para ler do JNI
+            val audioBuffer = ShortArray(2048)
+            
             while (isRunning.get()) {
-                // Pega samples do C++
+                // Pega samples gerados pelo emulador (C++)
                 val samplesRead = MedNESJni.getAudioSamples(audioBuffer)
+                
                 if (samplesRead > 0) {
-                    // Escreve no hardware
+                    // Escreve no hardware de som
                     audioTrack?.write(audioBuffer, 0, samplesRead)
                 } else {
-                    // Se não tiver som, dorme pouco pra não fritar CPU
+                    // Se não tiver áudio pronto, dorme um pouco para economizar bateria
                     try { Thread.sleep(2) } catch (e: Exception) {}
                 }
             }
-            audioTrack?.stop()
-            audioTrack?.release()
+            
+            try {
+                audioTrack?.stop()
+                audioTrack?.release()
+            } catch (e: Exception) {}
         }
         audioThread?.start()
     }
@@ -151,22 +160,27 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         gameThread = Thread {
             val paint = Paint()
             lastFpsTime = System.currentTimeMillis()
+            
+            // Prioridade máxima para garantir fluidez gráfica
             Thread.currentThread().priority = Thread.MAX_PRIORITY
             
-            val targetFrameNs = 16_666_667L
+            val targetFrameNs = 16_666_667L // 60 FPS
             var nextFrameTimeNs = System.nanoTime()
 
             while (isRunning.get()) {
                 val frameStartNs = System.nanoTime()
 
+                // 1. Executa a emulação (CPU/PPU/APU)
                 MedNESJni.stepFrame(emuBitmap!!)
 
+                // 2. Desenha na tela
                 val canvas = holder.lockCanvas()
                 if (canvas != null) {
                     canvas.drawBitmap(emuBitmap!!, 0f, 0f, paint)
                     holder.unlockCanvasAndPost(canvas)
                 }
 
+                // 3. Contador de FPS
                 fpsCounter++
                 val nowMs = System.currentTimeMillis()
                 if (nowMs - lastFpsTime >= 1000) {
@@ -176,12 +190,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     runOnUiThread { fpsText.text = "FPS: $fps" }
                 }
                 
+                // 4. Limitador de quadros preciso
                 val elapsedNs = System.nanoTime() - frameStartNs
                 nextFrameTimeNs += targetFrameNs
                 var sleepUntilNs = nextFrameTimeNs - System.nanoTime()
                 
+                // Se estivermos muito atrasados, não tente recuperar o tempo perdido (evita fast-forward)
                 if (sleepUntilNs > targetFrameNs) sleepUntilNs = targetFrameNs
                 
+                // Sleep em milissegundos para intervalos grandes
                 if (sleepUntilNs > 2_000_000L) {
                     val sleepMs = (sleepUntilNs / 1_000_000L).toLong()
                     try {
@@ -190,6 +207,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     sleepUntilNs -= sleepMs * 1_000_000L
                 }
                 
+                // Busy-wait para precisão de nanosegundos no final
                 while (sleepUntilNs > 0 && isRunning.get()) {
                     Thread.yield()
                     sleepUntilNs = nextFrameTimeNs - System.nanoTime()
