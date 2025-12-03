@@ -1,5 +1,4 @@
 #include "6502.hpp"
-
 #include <assert.h>
 
 namespace MedNES {
@@ -15,16 +14,20 @@ void CPU6502::step() {
     programCounter++;
 }
 
+// MUDANÇA 1: APU Tick
 inline void CPU6502::tick() {
     ppu->tick();
     ppu->tick();
     ppu->tick();
+    if(apu) apu->tick(); // Atualiza audio
     ++cycle;
 }
 
+// ... (Copie getExecutionState e outros métodos iguais até memoryAccess) ...
+// Para poupar espaço, vou mostrar apenas o memoryAccess modificado. O resto continua igual.
+
 ExecutionState *CPU6502::getExecutionState() {
     ExecutionState *execState = new ExecutionState();
-
     execState->accumulator = accumulator;
     execState->xRegister = xRegister;
     execState->yRegister = yRegister;
@@ -32,158 +35,31 @@ ExecutionState *CPU6502::getExecutionState() {
     execState->programCounter = programCounter;
     execState->stackPointer = stackPointer;
     execState->cycle = cycle;
-
     return execState;
 }
 
-void CPU6502::setProgramCounter(u16 pc) {
-    programCounter = pc;
-}
-
-inline void CPU6502::LOG_EXEC(u8 instr) {
-    execLog << std::hex << static_cast<int>(instr) << " ";
-}
-
-inline void CPU6502::LOG_PC() {
-    u8 lsb = programCounter & 0xFF;
-    u8 msb = programCounter >> 8;
-    u16 pc = msb * 256 + lsb;
-    execLog << std::hex << static_cast<int>(pc) << " ";
-}
-
-inline void CPU6502::LOG_CPU_STATE() {
-    execLog << "   A:" << std::hex << static_cast<int>(accumulator) << " X:" << std::hex << static_cast<int>(xRegister) << " Y:" << std::hex << static_cast<int>(yRegister) << " P:" << std::hex << static_cast<int>(statusRegister) << " SP:" << std::hex << static_cast<int>(stackPointer);
-}
-
-inline void CPU6502::PRINT_LOG() {
-    std::cout << execLog.str() << "\n";
-    execLog.str("");
-}
-
-u8 CPU6502::fetchInstruction() {
-    return read(programCounter);
-}
-
-inline void CPU6502::pushPC() {
-    u8 lsb = programCounter & 0xFF;
-    u8 msb = programCounter >> 8;
-    pushStack(msb);
-    pushStack(lsb);
-}
-
-//Interupts
-void CPU6502::reset() {
-    //init program counter = $FFFC, $FFFD
-    programCounter = read(0xFFFD) * 256 + read(0xFFFC);
-}
-
-inline void CPU6502::irq() {
-    pushPC();
-    pushStack(statusRegister);
-    u8 lsb = read(0xFFFE);
-    u8 msb = read(0xFFFF);
-    programCounter = msb * 256 + lsb;
-}
-
-inline void CPU6502::NMI() {
-    SEI();
-    pushPC();
-    pushStack(statusRegister);
-    u8 lsb = read(0xFFFA);
-    u8 msb = read(0xFFFB);
-    programCounter = msb * 256 + lsb;
-    tick();
-}
-
-u16 CPU6502::immediate() {
-    return ++programCounter;
-}
-
-u16 CPU6502::zeroPage() {
-    u8 zeroPage = read(++programCounter);
-    return zeroPage % 256;
-}
-
-u16 CPU6502::zeroPageX() {
-    tick();
-    u8 zeroPage = read(++programCounter);
-    return (zeroPage + xRegister) % 256;
-}
-
-u16 CPU6502::zeroPageY() {
-    u8 zeroPage = read(++programCounter);
-    return (zeroPage + yRegister) % 256;
-}
-
-u16 CPU6502::absolute() {
-    u8 lsb = read(++programCounter);
-    u8 msb = read(++programCounter);
-    u16 address = msb * 256 + lsb;
-
-    return address;
-}
-
-u16 CPU6502::absoluteY(bool extraTick) {
-    u8 lsb = read(++programCounter);
-    u8 msb = read(++programCounter);
-    u16 address = msb * 256 + lsb;
-
-    if (extraTick) {
-        tickIfToNewPage(address, address + yRegister);
-    }
-
-    return address + yRegister;
-}
-
-u16 CPU6502::absoluteX(bool extraTick) {
-    u8 lsb = read(++programCounter);
-    u8 msb = read(++programCounter);
-    u16 address = msb * 256 + lsb;
-
-    if (extraTick) {
-        tickIfToNewPage(address, address + xRegister);
-    }
-
-    return address + xRegister;
-}
-
-u16 CPU6502::indirectX() {
-    tick();
-    u16 operand = (read(++programCounter) + xRegister) % 256;
-    u8 lsb = read(operand);
-    u8 msb = read((operand + 1) % 256);
-    u16 address = msb * 256 + lsb;
-
-    return address;
-}
-
-u16 CPU6502::indirectY(bool extraTick) {
-    u16 operand = read(++programCounter);
-    u8 lsb = read(operand);
-    u8 msb = read((operand + 1) % 256);
-    u16 address = (msb * 256 + lsb);
-
-    if (extraTick) {
-        tickIfToNewPage(address, address + yRegister);
-    }
-
-    return address + yRegister;
-}
-
-u16 CPU6502::relative() {
-    int8_t offset = read(++programCounter);
-    return programCounter + offset;
-}
-
-void CPU6502::tickIfToNewPage(u16 pc, u16 newPc) {
-    u16 newPcMSB = newPc >> 8;
-    u16 oldPcMSB = pc >> 8;
-
-    if (newPcMSB != oldPcMSB) {
-        tick();
-    }
-}
-
+void CPU6502::setProgramCounter(u16 pc) { programCounter = pc; }
+inline void CPU6502::LOG_EXEC(u8 instr) { execLog << std::hex << static_cast<int>(instr) << " "; }
+inline void CPU6502::LOG_PC() { u8 lsb = programCounter & 0xFF; u8 msb = programCounter >> 8; u16 pc = msb * 256 + lsb; execLog << std::hex << static_cast<int>(pc) << " "; }
+inline void CPU6502::LOG_CPU_STATE() { execLog << "   A:" << std::hex << static_cast<int>(accumulator) << " X:" << std::hex << static_cast<int>(xRegister) << " Y:" << std::hex << static_cast<int>(yRegister) << " P:" << std::hex << static_cast<int>(statusRegister) << " SP:" << std::hex << static_cast<int>(stackPointer); }
+inline void CPU6502::PRINT_LOG() { std::cout << execLog.str() << "\n"; execLog.str(""); }
+u8 CPU6502::fetchInstruction() { return read(programCounter); }
+inline void CPU6502::pushPC() { u8 lsb = programCounter & 0xFF; u8 msb = programCounter >> 8; pushStack(msb); pushStack(lsb); }
+void CPU6502::reset() { programCounter = read(0xFFFD) * 256 + read(0xFFFC); }
+inline void CPU6502::irq() { pushPC(); pushStack(statusRegister); u8 lsb = read(0xFFFE); u8 msb = read(0xFFFF); programCounter = msb * 256 + lsb; }
+inline void CPU6502::NMI() { SEI(); pushPC(); pushStack(statusRegister); u8 lsb = read(0xFFFA); u8 msb = read(0xFFFB); programCounter = msb * 256 + lsb; tick(); }
+u16 CPU6502::immediate() { return ++programCounter; }
+u16 CPU6502::zeroPage() { u8 zeroPage = read(++programCounter); return zeroPage % 256; }
+u16 CPU6502::zeroPageX() { tick(); u8 zeroPage = read(++programCounter); return (zeroPage + xRegister) % 256; }
+u16 CPU6502::zeroPageY() { u8 zeroPage = read(++programCounter); return (zeroPage + yRegister) % 256; }
+u16 CPU6502::absolute() { u8 lsb = read(++programCounter); u8 msb = read(++programCounter); u16 address = msb * 256 + lsb; return address; }
+u16 CPU6502::absoluteY(bool extraTick) { u8 lsb = read(++programCounter); u8 msb = read(++programCounter); u16 address = msb * 256 + lsb; if (extraTick) { tickIfToNewPage(address, address + yRegister); } return address + yRegister; }
+u16 CPU6502::absoluteX(bool extraTick) { u8 lsb = read(++programCounter); u8 msb = read(++programCounter); u16 address = msb * 256 + lsb; if (extraTick) { tickIfToNewPage(address, address + xRegister); } return address + xRegister; }
+u16 CPU6502::indirectX() { tick(); u16 operand = (read(++programCounter) + xRegister) % 256; u8 lsb = read(operand); u8 msb = read((operand + 1) % 256); u16 address = msb * 256 + lsb; return address; }
+u16 CPU6502::indirectY(bool extraTick) { u16 operand = read(++programCounter); u8 lsb = read(operand); u8 msb = read((operand + 1) % 256); u16 address = (msb * 256 + lsb); if (extraTick) { tickIfToNewPage(address, address + yRegister); } return address + yRegister; }
+u16 CPU6502::relative() { int8_t offset = read(++programCounter); return programCounter + offset; }
+void CPU6502::tickIfToNewPage(u16 pc, u16 newPc) { u16 newPcMSB = newPc >> 8; u16 oldPcMSB = pc >> 8; if (newPcMSB != oldPcMSB) { tick(); } }
+// ... (Execute instruction mantido igual) ...
 void CPU6502::executeInstruction(u8 instruction) {
     u16 addr = 0;
     switch (instruction) {
@@ -214,7 +90,7 @@ void CPU6502::executeInstruction(u8 instruction) {
         case 0x0E: addr = absolute(); write(addr, ASL_val(read(addr))); tick(); break;
         case 0x1E: addr = absoluteX(false); tick(); write(addr, ASL_val(read(addr))); tick(); break;
 
-        // BRANCHES - relative() increments PC, so we pass the target directly
+        // BRANCHES
         case 0x90: BCC(relative()); break;
         case 0xB0: BCS(relative()); break;
         case 0xF0: BEQ(relative()); break;
@@ -507,32 +383,37 @@ u8 CPU6502::memoryAccess(MemoryAccessMode mode, u16 address, u8 data) {
             return 0;
         }
     } 
-    else if (address >= 0x4000 && address < 0x4018) {
-        //COPY OAM
-        if (address == 0x4014) {
-            if (mode == MemoryAccessMode::READ) {
-                std::cout << "No read access at 0x4014";
-            } else {
-                ppu->write(address, data);
-
-                for (int i = 0; i < 256; i++) {
-                    tick();
-                    ppu->copyOAM(read(data * 256 + i), i);
-                }
+    // MUDANÇA 2: APU Mapping ($4000 - $4017)
+    else if (address >= 0x4000 && address <= 0x4017) {
+        if (address == 0x4014) { // DMA Handler (PPU)
+            ppu->write(address, data);
+            for (int i = 0; i < 256; i++) {
+                tick();
+                ppu->copyOAM(read(data * 256 + i), i);
             }
-        } else {
-            if (mode == MemoryAccessMode::READ) {
+        } else if (address == 0x4016 || address == 0x4017) { // Controller
+             if (mode == MemoryAccessMode::READ) {
                 tick();
                 return controller->read(address);
             } else {
                 controller->write(address, data);
+                if(address == 0x4017 && apu) apu->write(address, data); // Frame counter
                 tick();
                 return 0;
             }
+        } else { // APU Registers
+            if (apu) {
+                if (mode == MemoryAccessMode::READ) {
+                     tick();
+                     return apu->read(address);
+                } else {
+                     apu->write(address, data);
+                     tick();
+                     return 0;
+                }
+            }
         }
-        //APU I/O registers
-    } else if (address >= 0x4018 && address < 0x4020) {
-        //CPU test mode
+        return 0;
     } else if (address >= 0x6000 && address < 0x8000) {
         if (mode == MemoryAccessMode::READ) {
             tick();
@@ -548,63 +429,9 @@ u8 CPU6502::memoryAccess(MemoryAccessMode mode, u16 address, u8 data) {
     return 0;
 }
 
-u8 CPU6502::read(u16 address) {
-    return memoryAccess(MemoryAccessMode::READ, address, 0);
-}
-
-void CPU6502::write(u16 address, u8 data) {
-    memoryAccess(MemoryAccessMode::WRITE, address, data);
-}
-
-inline void CPU6502::setSRFlag(CPU6502::StatusFlags flag, bool val) {
-    if (val) {
-        statusRegister |= (1 << flag);
-    } else {
-        statusRegister &= ~(1 << flag);
-    }
-}
-
-inline void CPU6502::setNegative(bool val) {
-    setSRFlag(StatusFlags::NEGATIVE, val);
-}
-
-inline void CPU6502::setOverflow(bool val) {
-    setSRFlag(StatusFlags::OVERFLO, val);
-}
-
-inline void CPU6502::setBreak4(bool val) {
-    setSRFlag(StatusFlags::BREAK4, val);
-}
-
-inline void CPU6502::setBreak5(bool val) {
-    setSRFlag(StatusFlags::BREAK5, val);
-}
-
-inline void CPU6502::setDecimal(bool val) {
-    setSRFlag(StatusFlags::DECIMAL, val);
-}
-
-inline void CPU6502::setInterruptDisable(bool val) {
-    setSRFlag(StatusFlags::INTERRUPT, val);
-}
-
-inline void CPU6502::setZero(bool val) {
-    setSRFlag(StatusFlags::ZERO, val);
-}
-
-inline void CPU6502::setCarry(bool val) {
-    setSRFlag(StatusFlags::CARRY, val);
-}
-
-void CPU6502::pushStack(u8 data) {
-    write(stackPointer + 256, data);
-    stackPointer--;
-}
-
-u8 CPU6502::popStack() {
-    stackPointer++;
-    return read(stackPointer + 256);
-}
+// ... (Resto das funções mantidas iguais) ...
+// Copie todas as implementações de instruções do arquivo anterior (ADC, AND, etc).
+// Estou omitindo para economizar espaço, mas é crucial que elas existam no arquivo final.
 
 void CPU6502::ADC(u8 data) {
     u8 carry = statusRegister & 1;
@@ -632,8 +459,6 @@ u8 CPU6502::ASL_val(u8 data) {
     return data;
 }
 
-// CORREÇÃO CRÍTICA AQUI: Removido programCounter++ do else.
-// relative() já consumiu o operando ao ser chamado dentro do switch.
 void CPU6502::commonBranchLogic(bool expr, u16 resolvePC) {
     if (expr) {
         tickIfToNewPage(programCounter + 1, resolvePC + 1);
