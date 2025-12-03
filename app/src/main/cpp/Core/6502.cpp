@@ -18,7 +18,7 @@ inline void CPU6502::tick() {
     ppu->tick();
     ppu->tick();
     ppu->tick();
-    if(apu) apu->tick(); // Avança o relógio da APU
+    if(apu) apu->tick();
     ++cycle;
 }
 
@@ -56,6 +56,7 @@ u16 CPU6502::indirectY(bool extraTick) { u16 operand = read(++programCounter); u
 u16 CPU6502::relative() { int8_t offset = read(++programCounter); return programCounter + offset; }
 void CPU6502::tickIfToNewPage(u16 pc, u16 newPc) { u16 newPcMSB = newPc >> 8; u16 oldPcMSB = pc >> 8; if (newPcMSB != oldPcMSB) { tick(); } }
 
+// Otimização: Switch expandido sem std::bind
 void CPU6502::executeInstruction(u8 instruction) {
     u16 addr = 0;
     switch (instruction) {
@@ -272,14 +273,14 @@ void CPU6502::executeInstruction(u8 instruction) {
         case 0x98: TYA(); break;
 
         // UNOFFICIAL OPCODES
-        case 0x04: case 0x44: case 0x64: NOP(); zeroPage(); tick(); break; // NOP ZeroPage
-        case 0x0C: NOP(); absolute(); tick(); break; // NOP Absolute
+        case 0x04: case 0x44: case 0x64: NOP(); zeroPage(); tick(); break;
+        case 0x0C: NOP(); absolute(); tick(); break;
         
-        case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4: NOP(); zeroPageX(); tick(); break; // NOP ZPX
-        case 0x1A: case 0x3A: case 0x5A: case 0x7A: case 0xDA: case 0xFA: NOP(); break; // NOP Implicit
-        case 0x80: NOP(); immediate(); tick(); break; // NOP Immediate
+        case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4: NOP(); zeroPageX(); tick(); break;
+        case 0x1A: case 0x3A: case 0x5A: case 0x7A: case 0xDA: case 0xFA: NOP(); break;
+        case 0x80: NOP(); immediate(); tick(); break;
 
-        case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC: NOP(); absoluteX(true); tick(); break; // NOP AbsX
+        case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC: NOP(); absoluteX(true); tick(); break;
 
         case 0xA3: LAX(indirectX()); break;
         case 0xA7: LAX(zeroPage()); break;
