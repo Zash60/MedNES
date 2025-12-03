@@ -5,4 +5,6 @@ object MedNESJni {
     external fun loadRom(path: String): Boolean
     external fun stepFrame(bitmap: Bitmap)
     external fun sendInput(keyId: Int, pressed: Boolean)
+    // Novo
+    external fun getAudioSamples(buffer: ShortArray): Int
 }
