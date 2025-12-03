@@ -7,7 +7,7 @@
 #include "Core/Controller.hpp"
 #include "Core/PPU.hpp"
 #include "Core/ROM.hpp"
-#include "Core/APU.hpp" // <--- Include APU
+#include "Core/APU.hpp"
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "MedNES", __VA_ARGS__)
 
@@ -25,7 +25,7 @@ MedNES::Mapper* objMapper = nullptr;
 MedNES::PPU* objPpu = nullptr;
 MedNES::Controller* objController = nullptr;
 MedNES::CPU6502* objCpu = nullptr;
-MedNES::APU* objApu = nullptr; // <--- APU Instance
+MedNES::APU* objApu = nullptr; 
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath) {
@@ -36,7 +36,7 @@ Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath)
         if(objController) { delete objController; objController = nullptr; }
         if(objPpu) { delete objPpu; objPpu = nullptr; }
         if(objMapper) { delete objMapper; objMapper = nullptr; }
-        if(objApu) { delete objApu; objApu = nullptr; } // Clean APU
+        if(objApu) { delete objApu; objApu = nullptr; }
         delete objRom; objRom = nullptr;
     }
 
@@ -60,10 +60,10 @@ Java_com_mednes_android_MedNESJni_loadRom(JNIEnv* env, jobject, jstring romPath)
     }
 
     objPpu = new MedNES::PPU(objMapper);
-    objApu = new MedNES::APU(); // New APU
+    objApu = new MedNES::APU(); 
     objController = new MedNES::Controller();
     
-    // Pass APU to CPU
+    // Passa APU para CPU
     objCpu = new MedNES::CPU6502(objMapper, objPpu, objApu, objController);
     objCpu->reset();
 
@@ -75,6 +75,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap) {
     if (!objCpu || !objPpu) return;
     
+    // Executa até completar o frame
     while (!objPpu->generateFrame) { 
         objCpu->step(); 
     }
@@ -83,14 +84,10 @@ Java_com_mednes_android_MedNESJni_stepFrame(JNIEnv* env, jobject, jobject bitmap
     void* pixels;
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0) return;
     
-    uint32_t* src = objPpu->buffer;
-    uint32_t* dst = (uint32_t*)pixels;
-    int totalPixels = 256 * 240;
-    
-    for (int i = 0; i < totalPixels; ++i) {
-        uint32_t c = src[i];
-        dst[i] = (c & 0xFF00FF00) | ((c & 0x00FF0000) >> 16) | ((c & 0x000000FF) << 16);
-    }
+    // OTIMIZAÇÃO: Cópia direta de memória (memcpy)
+    // O PPU agora gera o buffer no formato 0xAABBGGRR, que é compatível com
+    // ARGB_8888 em arquiteturas Little Endian (padrão Android).
+    memcpy(pixels, objPpu->buffer, 256 * 240 * sizeof(uint32_t));
     
     AndroidBitmap_unlockPixels(env, bitmap);
 }
@@ -112,7 +109,6 @@ Java_com_mednes_android_MedNESJni_sendInput(JNIEnv* env, jobject, jint keyId, jb
     if (k != 0) objController->setButtonPressed(k, pressed);
 }
 
-// NOVA FUNÇÃO: Resgata samples de áudio
 extern "C" JNIEXPORT jint JNICALL
 Java_com_mednes_android_MedNESJni_getAudioSamples(JNIEnv* env, jobject, jshortArray audioBuffer) {
     if (!objApu) return 0;
@@ -120,6 +116,7 @@ Java_com_mednes_android_MedNESJni_getAudioSamples(JNIEnv* env, jobject, jshortAr
     jsize len = env->GetArrayLength(audioBuffer);
     jshort* body = env->GetShortArrayElements(audioBuffer, 0);
     
+    // Lê do buffer circular thread-safe
     int samplesRead = objApu->getSamples(body, len);
     
     env->ReleaseShortArrayElements(audioBuffer, body, 0);
