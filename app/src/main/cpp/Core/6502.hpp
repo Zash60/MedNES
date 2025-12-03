@@ -1,8 +1,6 @@
 #pragma once
 
 #include <stdio.h>
-
-#include <functional>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -91,253 +89,120 @@ class CPU6502 {
     inline void NMI();
 
     inline void LOG_EXEC(u8 instr);
-
     inline void LOG_PC();
-
     inline void LOG_CPU_STATE();
-
     inline void PRINT_LOG();
 
     inline void tick();
 
     //stack
     void pushStack(u8);
-
     u8 popStack();
 
-    //addressing
+    //addressing - return address
     u16 immediate();
-
     u16 zeroPage();
-
     u16 zeroPageX();
-
     u16 zeroPageY();
-
     u16 absolute();
-
     u16 absoluteX(bool);
-
     u16 absoluteY(bool);
-
     u16 indirectX();
-
     u16 indirectY(bool);
-
     u16 relative();
 
-    void ADC(std::function<u16()>);
+    // Opcodes - Direct Values or Addresses
+    void ADC(u8); 
+    void AND(u8);
+    
+    // ASL
+    u8 ASL_val(u8);
 
-    void ADC(u8);  //for RRA
+    // Branch Helpers
+    void commonBranchLogic(bool, u16);
+    void BCC(u16);
+    void BCS(u16);
+    void BEQ(u16);
+    void BMI(u16);
+    void BNE(u16);
+    void BPL(u16);
+    void BVC(u16);
+    void BVS(u16);
 
-    //And with accumulator
-    void AND(std::function<u16()>);
-
-    void AND(u8);  //for RLA
-
-    //Arithmetic shift left
-    void ASL(std::function<u16()>);
-
-    u8 ASL_val(u8);  //for SLO
-
-    //Branch on carry clear
-    void BCC(std::function<u16()>);
-
-    //branch on carry set
-    void BCS(std::function<u16()>);
-
-    //branch on equal (zero set)
-    void BEQ(std::function<u16()>);
-
-    //Bit test
-    void BIT(std::function<u16()>);
-
-    //Branch on minus (negative set)
-    void BMI(std::function<u16()>);
-
-    //Branch on not equal (zero clear)
-    void BNE(std::function<u16()>);
-
-    //Branch on plus (negative clear)
-    void BPL(std::function<u16()>);
-
-    //Interrupt
+    void BIT(u16); // Reads memory inside
     void BRK();
-
-    //Branch on overflow clear
-    void BVC(std::function<u16()>);
-
-    //Branch on overflow set
-    void BVS(std::function<u16()>);
-
-    //Clear carry
+    
     void CLC();
-
-    //Clear decimal
     void CLD();
-
-    //clear interrupt disable
     void CLI();
-
-    //Clear overflow
     void CLV();
 
-    //Compare (with accumulator}
-    void CMP(std::function<u16()>);
+    void CMP(u8);
+    void CPX(u8);
+    void CPY(u8);
 
-    void CMP(u8);  //for DCP
-
-    //Compare with X
-    void CPX(std::function<u16()>);
-
-    //Compare with Y
-    void CPY(std::function<u16()>);
-
-    //Decrement
-    void DEC(std::function<u16()>);
-
-    u8 DEC(u8);  //for DCP
-
-    //decrement X
+    u8 DEC_val(u8);
     void DEX();
-
-    //decrement Y
     void DEY();
 
-    //Exclusive or (with accumulator)
-    void EOR(std::function<u16()>);
+    void EOR(u8);
 
-    void EOR(u8);  //for SRE
-
-    //Increment
-    void INC(std::function<u16()>);
-
-    u8 INC(u8);  //for ISB
-
-    //Increment X
+    u8 INC_val(u8);
     void INX();
-
-    //Increment Y
     void INY();
 
-    //Jump
-    void JMP(std::function<u16()>);
+    void JMP(u16); // Absolute
+    void JMP_Indirect(); // Indirect logic inside
 
-    //Jump subroutine
-    void JSR(std::function<u16()>);
+    void JSR(u16);
 
-    //Load accumulator
-    void LDA(std::function<u16()>);
+    void LDA(u8);
+    void LDX(u8);
+    void LDY(u8);
 
-    void LDA(u8);  //for LAX
+    u8 LSR_val(u8);
 
-    //Load X
-    void LDX(std::function<u16()>);
+    void NOP(); // Standard NOP
+    void ORA(u8);
 
-    void LDX(u8);  //for LAX
-
-    //Load Y
-    void LDY(std::function<u16()>);
-
-    //Logical shift right
-    void LSR(std::function<u16()>);
-
-    u8 LSR_val(u8);  //for SRE
-
-    //Or with accumulator
-    void ORA(std::function<u16()>);
-
-    void ORA(u8);  //for SLO
-
-    //Push accumulator
     void PHA();
-
-    //Push processor status (SR)
     void PHP();
-
-    //Pull accumulator
     void PLA();
-
-    //Pull processor status (SR)
     void PLP();
 
-    //Rotate left
-    void ROL(std::function<u16()>);
-
     u8 ROL_val(u8);
+    u8 ROR_val(u8);
 
-    //Rotate right
-    void ROR(std::function<u16()>);
-
-    u8 ROR_val(u8);  //for RRA
-
-    //Return from interrupt
     void RTI();
-
-    //Return from subroutine
     void RTS();
 
-    //Subtract with carrz
-    void SBC(std::function<u16()>);
+    void SBC(u8);
 
-    void SBC(u8);  //for ISB
-
-    //Set carry
     void SEC();
-
-    //Set decimal;
     void SED();
-
-    //Set interrupt disable
     void SEI();
 
-    //Store accumulator
-    void STA(std::function<u16()>);
+    // Stores take address
+    void STA(u16);
+    void STX(u16);
+    void STY(u16);
 
-    //Store X
-    void STX(std::function<u16()>);
-
-    //Store Y
-    void STY(std::function<u16()>);
-
-    //Transfer accumulator to X
     void TAX();
-
-    //Transfer accumulator to Y
     void TAY();
-
-    //Transfer stack pointer to X
     void TSX();
-
-    //Transfer X to accumulator
     void TXA();
-
-    //Transfer X to stack pointer
     void TXS();
-
-    //Transfer Y to accumulator
     void TYA();
 
-    //UNOFFICIAL ONES
-    void NOP(std::function<u16()>);
-
-    void LAX(std::function<u16()>);
-
-    void SAX(std::function<u16()>);
-
-    void DCP(std::function<u16()>);
-
-    void ISB(std::function<u16()>);
-
-    void SLO(std::function<u16()>);
-
-    void RLA(std::function<u16()>);
-
-    void RRA(std::function<u16()>);
-
-    void SRE(std::function<u16()>);
-
-    void commonBranchLogic(bool, std::function<u16()>);
+    // Unofficial Helpers
+    void LAX(u16);
+    void SAX(u16);
+    void DCP(u16);
+    void ISB(u16);
+    void SLO(u16);
+    void RLA(u16);
+    void RRA(u16);
+    void SRE(u16);
 
     void tickIfToNewPage(u16, u16);
 
