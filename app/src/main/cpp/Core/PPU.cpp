@@ -21,13 +21,6 @@ void PPU::tick() {
             }
         }
 
-        //skip dot on odd frame
-        /*if (odd && !isRenderingDisabled() && dot == 339 && scanLine == 261) {
-             scanLine = 0;
-             dot = 0;
-             tick();
-         }*/
-
         if (scanLine >= 0 && scanLine <= 239) {
             evalSprites();
         }
@@ -202,7 +195,7 @@ inline void PPU::emitPixel() {
     bool showSprite = false;
     bool spriteFound = false;
 
-    // Optimized loop with static array
+    // Fixed array iteration
     for (int i = 0; i < spriteCount; i++) {
         SpriteRenderEntity& sprite = spriteRenderEntities[i];
 
@@ -507,6 +500,7 @@ inline void PPU::decrementSpriteCounters() {
         return;
     }
 
+    // Iteração manual no array fixo
     for (int i = 0; i < spriteCount; i++) {
         SpriteRenderEntity& sprite = spriteRenderEntities[i];
         if (sprite.counter > 0) {
