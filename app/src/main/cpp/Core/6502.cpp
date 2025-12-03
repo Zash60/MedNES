@@ -172,7 +172,6 @@ u16 CPU6502::indirectY(bool extraTick) {
 
 u16 CPU6502::relative() {
     int8_t offset = read(++programCounter);
-
     return programCounter + offset;
 }
 
@@ -186,731 +185,289 @@ void CPU6502::tickIfToNewPage(u16 pc, u16 newPc) {
 }
 
 void CPU6502::executeInstruction(u8 instruction) {
+    u16 addr = 0;
     switch (instruction) {
-        case 0x69:
-            ADC(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0x65:
-            ADC(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x75:
-            ADC(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x6D:
-            ADC(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x7D:
-            ADC(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-        case 0x79:
-            ADC(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0x61:
-            ADC(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x71:
-            ADC(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
+        // ADC
+        case 0x69: ADC(read(immediate())); break;
+        case 0x65: ADC(read(zeroPage())); break;
+        case 0x75: ADC(read(zeroPageX())); break;
+        case 0x6D: ADC(read(absolute())); break;
+        case 0x7D: ADC(read(absoluteX(true))); break;
+        case 0x79: ADC(read(absoluteY(true))); break;
+        case 0x61: ADC(read(indirectX())); break;
+        case 0x71: ADC(read(indirectY(true))); break;
 
-        case 0x29:
-            AND(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0x25:
-            AND(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x35:
-            AND(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x2D:
-            AND(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x3D:
-            AND(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-        case 0x39:
-            AND(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0x21:
-            AND(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x31:
-            AND(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
+        // AND
+        case 0x29: AND(read(immediate())); break;
+        case 0x25: AND(read(zeroPage())); break;
+        case 0x35: AND(read(zeroPageX())); break;
+        case 0x2D: AND(read(absolute())); break;
+        case 0x3D: AND(read(absoluteX(true))); break;
+        case 0x39: AND(read(absoluteY(true))); break;
+        case 0x21: AND(read(indirectX())); break;
+        case 0x31: AND(read(indirectY(true))); break;
 
-        case 0x0A:
-            ASL(nullptr);
-            break;
-        case 0x06:
-            ASL(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x16:
-            ASL(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x0E:
-            ASL(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x1E:
-            ASL(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
+        // ASL
+        case 0x0A: accumulator = ASL_val(accumulator); tick(); break;
+        case 0x06: addr = zeroPage(); write(addr, ASL_val(read(addr))); tick(); break;
+        case 0x16: addr = zeroPageX(); write(addr, ASL_val(read(addr))); tick(); break;
+        case 0x0E: addr = absolute(); write(addr, ASL_val(read(addr))); tick(); break;
+        case 0x1E: addr = absoluteX(false); tick(); write(addr, ASL_val(read(addr))); tick(); break;
 
-        //START BRANCH INSTRUCTIONS, ALL RELATIVE!
-        case 0x90:
-            BCC(std::bind(&CPU6502::relative, this));
-            break;
-        case 0xB0:
-            BCS(std::bind(&CPU6502::relative, this));
-            break;
-        case 0xF0:
-            BEQ(std::bind(&CPU6502::relative, this));
-            break;
-        case 0x30:
-            BMI(std::bind(&CPU6502::relative, this));
-            break;
-        case 0xD0:
-            BNE(std::bind(&CPU6502::relative, this));
-            break;
-        case 0x10:
-            BPL(std::bind(&CPU6502::relative, this));
-            break;
-        case 0x50:
-            BVC(std::bind(&CPU6502::relative, this));
-            break;
-        case 0x70:
-            BVS(std::bind(&CPU6502::relative, this));
-            break;
-            //END BRANCH INSTRUCTION
+        // BRANCHES
+        case 0x90: BCC(relative()); break;
+        case 0xB0: BCS(relative()); break;
+        case 0xF0: BEQ(relative()); break;
+        case 0x30: BMI(relative()); break;
+        case 0xD0: BNE(relative()); break;
+        case 0x10: BPL(relative()); break;
+        case 0x50: BVC(relative()); break;
+        case 0x70: BVS(relative()); break;
 
-        case 0x24:
-            BIT(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x2C:
-            BIT(std::bind(&CPU6502::absolute, this));
-            break;
+        // BIT
+        case 0x24: BIT(zeroPage()); break;
+        case 0x2C: BIT(absolute()); break;
 
-        case 0x00:
-            BRK();
-            break;
+        case 0x00: BRK(); break;
 
-        case 0x18:
-            CLC();
-            break;
-        case 0xD8:
-            CLD();
-            break;
-        case 0x58:
-            CLI();
-            break;
-        case 0xB8:
-            CLV();
-            break;
+        // FLAGS
+        case 0x18: CLC(); break;
+        case 0xD8: CLD(); break;
+        case 0x58: CLI(); break;
+        case 0xB8: CLV(); break;
 
-        case 0xC9:
-            CMP(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0xC5:
-            CMP(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xD5:
-            CMP(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xCD:
-            CMP(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xDD:
-            CMP(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-        case 0xD9:
-            CMP(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0xC1:
-            CMP(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0xD1:
-            CMP(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
+        // CMP
+        case 0xC9: CMP(read(immediate())); break;
+        case 0xC5: CMP(read(zeroPage())); break;
+        case 0xD5: CMP(read(zeroPageX())); break;
+        case 0xCD: CMP(read(absolute())); break;
+        case 0xDD: CMP(read(absoluteX(true))); break;
+        case 0xD9: CMP(read(absoluteY(true))); break;
+        case 0xC1: CMP(read(indirectX())); break;
+        case 0xD1: CMP(read(indirectY(true))); break;
 
-        case 0xE0:
-            CPX(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0xE4:
-            CPX(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xEC:
-            CPX(std::bind(&CPU6502::absolute, this));
-            break;
+        // CPX
+        case 0xE0: CPX(read(immediate())); break;
+        case 0xE4: CPX(read(zeroPage())); break;
+        case 0xEC: CPX(read(absolute())); break;
 
-        case 0xC0:
-            CPY(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0xC4:
-            CPY(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xCC:
-            CPY(std::bind(&CPU6502::absolute, this));
-            break;
+        // CPY
+        case 0xC0: CPY(read(immediate())); break;
+        case 0xC4: CPY(read(zeroPage())); break;
+        case 0xCC: CPY(read(absolute())); break;
 
-        case 0xC6:
-            DEC(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xD6:
-            DEC(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xCE:
-            DEC(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xDE:
-            DEC(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
+        // DEC
+        case 0xC6: addr = zeroPage(); write(addr, DEC_val(read(addr))); break;
+        case 0xD6: addr = zeroPageX(); write(addr, DEC_val(read(addr))); break;
+        case 0xCE: addr = absolute(); write(addr, DEC_val(read(addr))); break;
+        case 0xDE: addr = absoluteX(false); tick(); write(addr, DEC_val(read(addr))); break;
 
-        case 0xCA:
-            DEX();
-            break;
-        case 0x88:
-            DEY();
-            break;
+        case 0xCA: DEX(); break;
+        case 0x88: DEY(); break;
 
-        case 0x49:
-            EOR(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0x45:
-            EOR(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x55:
-            EOR(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x4D:
-            EOR(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x5D:
-            EOR(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-        case 0x59:
-            EOR(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0x41:
-            EOR(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x51:
-            EOR(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
+        // EOR
+        case 0x49: EOR(read(immediate())); break;
+        case 0x45: EOR(read(zeroPage())); break;
+        case 0x55: EOR(read(zeroPageX())); break;
+        case 0x4D: EOR(read(absolute())); break;
+        case 0x5D: EOR(read(absoluteX(true))); break;
+        case 0x59: EOR(read(absoluteY(true))); break;
+        case 0x41: EOR(read(indirectX())); break;
+        case 0x51: EOR(read(indirectY(true))); break;
 
-        case 0xE6:
-            INC(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xF6:
-            INC(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xEE:
-            INC(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xFE:
-            INC(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
+        // INC
+        case 0xE6: addr = zeroPage(); write(addr, INC_val(read(addr))); break;
+        case 0xF6: addr = zeroPageX(); write(addr, INC_val(read(addr))); break;
+        case 0xEE: addr = absolute(); write(addr, INC_val(read(addr))); break;
+        case 0xFE: addr = absoluteX(false); tick(); write(addr, INC_val(read(addr))); break;
 
-        case 0xE8:
-            INX();
-            break;
-        case 0xC8:
-            INY();
-            break;
+        case 0xE8: INX(); break;
+        case 0xC8: INY(); break;
 
-        case 0x4C:
-            JMP(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x6C:
-            JMP(nullptr);
-            break;
+        // JMP
+        case 0x4C: JMP(absolute()); break;
+        case 0x6C: JMP_Indirect(); break;
 
-        case 0x20:
-            JSR(std::bind(&CPU6502::absolute, this));
-            break;
+        // JSR
+        case 0x20: JSR(absolute()); break;
 
-        case 0xA9:
-            LDA(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0xA5:
-            LDA(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xB5:
-            LDA(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xAD:
-            LDA(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xBD:
-            LDA(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-        case 0xB9:
-            LDA(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0xA1:
-            LDA(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0xB1:
-            LDA(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
+        // LDA
+        case 0xA9: LDA(read(immediate())); break;
+        case 0xA5: LDA(read(zeroPage())); break;
+        case 0xB5: LDA(read(zeroPageX())); break;
+        case 0xAD: LDA(read(absolute())); break;
+        case 0xBD: LDA(read(absoluteX(true))); break;
+        case 0xB9: LDA(read(absoluteY(true))); break;
+        case 0xA1: LDA(read(indirectX())); break;
+        case 0xB1: LDA(read(indirectY(true))); break;
 
-        case 0xA2:
-            LDX(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0xA6:
-            LDX(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xB6:
-            LDX(std::bind(&CPU6502::zeroPageY, this));
-            tick();
-            break;
-        case 0xAE:
-            LDX(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xBE:
-            LDX(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
+        // LDX
+        case 0xA2: LDX(read(immediate())); break;
+        case 0xA6: LDX(read(zeroPage())); break;
+        case 0xB6: LDX(read(zeroPageY())); tick(); break;
+        case 0xAE: LDX(read(absolute())); break;
+        case 0xBE: LDX(read(absoluteY(true))); break;
 
-        case 0xA0:
-            LDY(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0xA4:
-            LDY(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xB4:
-            LDY(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xAC:
-            LDY(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xBC:
-            LDY(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
+        // LDY
+        case 0xA0: LDY(read(immediate())); break;
+        case 0xA4: LDY(read(zeroPage())); break;
+        case 0xB4: LDY(read(zeroPageX())); break;
+        case 0xAC: LDY(read(absolute())); break;
+        case 0xBC: LDY(read(absoluteX(true))); break;
 
-        case 0x4A:
-            LSR(nullptr);
-            break;
-        case 0x46:
-            LSR(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x56:
-            LSR(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x4E:
-            LSR(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x5E:
-            LSR(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
+        // LSR
+        case 0x4A: accumulator = LSR_val(accumulator); tick(); break;
+        case 0x46: addr = zeroPage(); write(addr, LSR_val(read(addr))); tick(); break;
+        case 0x56: addr = zeroPageX(); write(addr, LSR_val(read(addr))); tick(); break;
+        case 0x4E: addr = absolute(); write(addr, LSR_val(read(addr))); tick(); break;
+        case 0x5E: addr = absoluteX(false); tick(); write(addr, LSR_val(read(addr))); tick(); break;
 
-        case 0xEA:
-            NOP(nullptr);
-            break;
+        case 0xEA: NOP(); break;
 
-        case 0x09:
-            ORA(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0x05:
-            ORA(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x15:
-            ORA(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x0D:
-            ORA(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x1D:
-            ORA(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-        case 0x19:
-            ORA(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0x01:
-            ORA(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x11:
-            ORA(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
+        // ORA
+        case 0x09: ORA(read(immediate())); break;
+        case 0x05: ORA(read(zeroPage())); break;
+        case 0x15: ORA(read(zeroPageX())); break;
+        case 0x0D: ORA(read(absolute())); break;
+        case 0x1D: ORA(read(absoluteX(true))); break;
+        case 0x19: ORA(read(absoluteY(true))); break;
+        case 0x01: ORA(read(indirectX())); break;
+        case 0x11: ORA(read(indirectY(true))); break;
 
-        case 0x48:
-            PHA();
-            break;
-        case 0x08:
-            PHP();
-            break;
-        case 0x68:
-            PLA();
-            break;
-        case 0x28:
-            PLP();
-            break;
+        // PUSH/PULL
+        case 0x48: PHA(); break;
+        case 0x08: PHP(); break;
+        case 0x68: PLA(); break;
+        case 0x28: PLP(); break;
 
-        case 0x2A:
-            ROL(nullptr);
-            break;
-        case 0x26:
-            ROL(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x36:
-            ROL(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x2E:
-            ROL(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x3E:
-            ROL(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
+        // ROL
+        case 0x2A: accumulator = ROL_val(accumulator); tick(); break;
+        case 0x26: addr = zeroPage(); write(addr, ROL_val(read(addr))); tick(); break;
+        case 0x36: addr = zeroPageX(); write(addr, ROL_val(read(addr))); tick(); break;
+        case 0x2E: addr = absolute(); write(addr, ROL_val(read(addr))); tick(); break;
+        case 0x3E: addr = absoluteX(false); tick(); write(addr, ROL_val(read(addr))); tick(); break;
 
-        case 0x6A:
-            ROR(nullptr);
-            break;
-        case 0x66:
-            ROR(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x76:
-            ROR(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x6E:
-            ROR(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x7E:
-            ROR(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
+        // ROR
+        case 0x6A: accumulator = ROR_val(accumulator); tick(); break;
+        case 0x66: addr = zeroPage(); write(addr, ROR_val(read(addr))); tick(); break;
+        case 0x76: addr = zeroPageX(); write(addr, ROR_val(read(addr))); tick(); break;
+        case 0x6E: addr = absolute(); write(addr, ROR_val(read(addr))); tick(); break;
+        case 0x7E: addr = absoluteX(false); tick(); write(addr, ROR_val(read(addr))); tick(); break;
 
-        case 0x40:
-            RTI();
-            break;
-        case 0x60:
-            RTS();
-            break;
+        case 0x40: RTI(); break;
+        case 0x60: RTS(); break;
 
-        case 0xE9:
-        case 0xEB:
-            SBC(std::bind(&CPU6502::immediate, this));
-            break;
-        case 0xE5:
-            SBC(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xF5:
-            SBC(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xED:
-            SBC(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xFD:
-            SBC(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-        case 0xF9:
-            SBC(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0xE1:
-            SBC(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0xF1:
-            SBC(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
+        // SBC
+        case 0xE9: case 0xEB: SBC(read(immediate())); break;
+        case 0xE5: SBC(read(zeroPage())); break;
+        case 0xF5: SBC(read(zeroPageX())); break;
+        case 0xED: SBC(read(absolute())); break;
+        case 0xFD: SBC(read(absoluteX(true))); break;
+        case 0xF9: SBC(read(absoluteY(true))); break;
+        case 0xE1: SBC(read(indirectX())); break;
+        case 0xF1: SBC(read(indirectY(true))); break;
 
-        case 0x38:
-            SEC();
-            break;
-        case 0xF8:
-            SED();
-            break;
-        case 0x78:
-            SEI();
-            break;
+        // SET FLAGS
+        case 0x38: SEC(); break;
+        case 0xF8: SED(); break;
+        case 0x78: SEI(); break;
 
-        case 0x85:
-            STA(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x95:
-            STA(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x8D:
-            STA(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x9D:
-            STA(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x99:
-            STA(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x81:
-            STA(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x91:
-            STA(std::bind(&CPU6502::indirectY, this, /*extraTick*/ false));
-            tick();
-            break;
+        // STA
+        case 0x85: STA(zeroPage()); break;
+        case 0x95: STA(zeroPageX()); break;
+        case 0x8D: STA(absolute()); break;
+        case 0x9D: STA(absoluteX(false)); tick(); break;
+        case 0x99: STA(absoluteY(false)); tick(); break;
+        case 0x81: STA(indirectX()); break;
+        case 0x91: STA(indirectY(false)); tick(); break;
 
-        case 0x86:
-            STX(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x96:
-            STX(std::bind(&CPU6502::zeroPageY, this));
-            tick();
-            break;
-        case 0x8E:
-            STX(std::bind(&CPU6502::absolute, this));
-            break;
+        // STX
+        case 0x86: STX(zeroPage()); break;
+        case 0x96: STX(zeroPageY()); tick(); break;
+        case 0x8E: STX(absolute()); break;
 
-        case 0x84:
-            STY(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x94:
-            STY(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x8C:
-            STY(std::bind(&CPU6502::absolute, this));
-            break;
+        // STY
+        case 0x84: STY(zeroPage()); break;
+        case 0x94: STY(zeroPageX()); break;
+        case 0x8C: STY(absolute()); break;
 
-        case 0xAA:
-            TAX();
-            break;
-        case 0xA8:
-            TAY();
-            break;
-        case 0xBA:
-            TSX();
-            break;
-        case 0x8A:
-            TXA();
-            break;
-        case 0x9A:
-            TXS();
-            break;
-        case 0x98:
-            TYA();
-            break;
+        // TRANSFERS
+        case 0xAA: TAX(); break;
+        case 0xA8: TAY(); break;
+        case 0xBA: TSX(); break;
+        case 0x8A: TXA(); break;
+        case 0x9A: TXS(); break;
+        case 0x98: TYA(); break;
 
-        //UNOFICIAL OPCODES
-        case 0x04:
-        case 0x44:
-        case 0x64:
-            NOP(std::bind(&CPU6502::zeroPage, this));
-            tick();
-            break;
+        // UNOFFICIAL OPCODES
+        case 0x04: case 0x44: case 0x64: NOP(); zeroPage(); tick(); break; // NOP ZeroPage
+        case 0x0C: NOP(); absolute(); tick(); break; // NOP Absolute
+        
+        case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4: NOP(); zeroPageX(); tick(); break; // NOP ZPX
+        case 0x1A: case 0x3A: case 0x5A: case 0x7A: case 0xDA: case 0xFA: NOP(); break; // NOP Implicit
+        case 0x80: NOP(); immediate(); tick(); break; // NOP Immediate
 
-        case 0x0C:
-            NOP(std::bind(&CPU6502::absolute, this));
-            tick();
-            break;
+        case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC: NOP(); absoluteX(true); tick(); break; // NOP AbsX
 
-        case 0x14:
-        case 0x34:
-        case 0x54:
-        case 0x74:
-        case 0xD4:
-        case 0xF4:
-            NOP(std::bind(&CPU6502::zeroPageX, this));
-            tick();
-            break;
+        case 0xA3: LAX(indirectX()); break;
+        case 0xA7: LAX(zeroPage()); break;
+        case 0xAF: LAX(absolute()); break;
+        case 0xB3: LAX(indirectY(true)); break;
+        case 0xB7: LAX(zeroPageY()); tick(); break;
+        case 0xBF: LAX(absoluteY(true)); break;
 
-        case 0x1A:
-        case 0x3A:
-        case 0x5A:
-        case 0x7A:
-        case 0xDA:
-        case 0xFA:
-            NOP(nullptr);
-            break;
+        case 0x83: SAX(indirectX()); break;
+        case 0x87: SAX(zeroPage()); break;
+        case 0x8F: SAX(absolute()); break;
+        case 0x97: SAX(zeroPageY()); tick(); break;
 
-        case 0x80:
-            NOP(std::bind(&CPU6502::immediate, this));
-            tick();
-            break;
+        case 0xC3: DCP(indirectX()); break;
+        case 0xC7: DCP(zeroPage()); break;
+        case 0xCF: DCP(absolute()); break;
+        case 0xD3: DCP(indirectY(true)); break;
+        case 0xD7: DCP(zeroPageX()); break;
+        case 0xDB: DCP(absoluteY(true)); break;
+        case 0xDF: DCP(absoluteX(true)); break;
 
-        case 0x1C:
-        case 0x3C:
-        case 0x5C:
-        case 0x7C:
-        case 0xDC:
-        case 0xFC:
-            NOP(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            tick();
-            break;
+        case 0xE3: ISB(indirectX()); break;
+        case 0xE7: ISB(zeroPage()); break;
+        case 0xEF: ISB(absolute()); break;
+        case 0xF3: ISB(indirectY(true)); break;
+        case 0xF7: ISB(zeroPageX()); break;
+        case 0xFB: ISB(absoluteY(true)); break;
+        case 0xFF: ISB(absoluteX(true)); break;
 
-        case 0xA3:
-            LAX(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0xA7:
-            LAX(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xAF:
-            LAX(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xB3:
-            LAX(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
-        case 0xB7:
-            LAX(std::bind(&CPU6502::zeroPageY, this));
-            tick();
-            break;
-        case 0xBF:
-            LAX(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
+        case 0x03: SLO(indirectX()); break;
+        case 0x07: SLO(zeroPage()); break;
+        case 0x0F: SLO(absolute()); break;
+        case 0x13: SLO(indirectY(false)); tick(); break;
+        case 0x17: SLO(zeroPageX()); break;
+        case 0x1B: SLO(absoluteY(false)); tick(); break;
+        case 0x1F: SLO(absoluteX(false)); tick(); break;
 
-        case 0x83:
-            SAX(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x87:
-            SAX(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x8F:
-            SAX(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x97:
-            SAX(std::bind(&CPU6502::zeroPageY, this));
-            tick();
-            break;
+        case 0x23: RLA(indirectX()); break;
+        case 0x27: RLA(zeroPage()); break;
+        case 0x2F: RLA(absolute()); break;
+        case 0x33: RLA(indirectY(false)); tick(); break;
+        case 0x37: RLA(zeroPageX()); break;
+        case 0x3B: RLA(absoluteY(false)); tick(); break;
+        case 0x3F: RLA(absoluteX(false)); tick(); break;
 
-        case 0xC3:
-            DCP(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0xC7:
-            DCP(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xCF:
-            DCP(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xD3:
-            DCP(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
-        case 0xD7:
-            DCP(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xDB:
-            DCP(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0xDF:
-            DCP(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
+        case 0x43: SRE(indirectX()); break;
+        case 0x47: SRE(zeroPage()); break;
+        case 0x4F: SRE(absolute()); break;
+        case 0x53: SRE(indirectY(false)); tick(); break;
+        case 0x57: SRE(zeroPageX()); break;
+        case 0x5B: SRE(absoluteY(false)); tick(); break;
+        case 0x5F: SRE(absoluteX(false)); tick(); break;
 
-        case 0xE3:
-            ISB(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0xE7:
-            ISB(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0xEF:
-            ISB(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0xF3:
-            ISB(std::bind(&CPU6502::indirectY, this, /*extraTick*/ true));
-            break;
-        case 0xF7:
-            ISB(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0xFB:
-            ISB(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ true));
-            break;
-        case 0xFF:
-            ISB(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ true));
-            break;
-
-        case 0x03:
-            SLO(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x07:
-            SLO(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x0F:
-            SLO(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x13:
-            SLO(std::bind(&CPU6502::indirectY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x17:
-            SLO(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x1B:
-            SLO(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x1F:
-            SLO(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
-
-        case 0x23:
-            RLA(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x27:
-            RLA(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x2F:
-            RLA(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x33:
-            RLA(std::bind(&CPU6502::indirectY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x37:
-            RLA(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x3B:
-            RLA(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x3F:
-            RLA(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
-
-        case 0x43:
-            SRE(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x47:
-            SRE(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x4F:
-            SRE(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x53:
-            SRE(std::bind(&CPU6502::indirectY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x57:
-            SRE(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x5B:
-            SRE(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x5F:
-            SRE(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
-
-        case 0x63:
-            RRA(std::bind(&CPU6502::indirectX, this));
-            break;
-        case 0x67:
-            RRA(std::bind(&CPU6502::zeroPage, this));
-            break;
-        case 0x6F:
-            RRA(std::bind(&CPU6502::absolute, this));
-            break;
-        case 0x73:
-            RRA(std::bind(&CPU6502::indirectY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x77:
-            RRA(std::bind(&CPU6502::zeroPageX, this));
-            break;
-        case 0x7B:
-            RRA(std::bind(&CPU6502::absoluteY, this, /*extraTick*/ false));
-            tick();
-            break;
-        case 0x7F:
-            RRA(std::bind(&CPU6502::absoluteX, this, /*extraTick*/ false));
-            tick();
-            break;
+        case 0x63: RRA(indirectX()); break;
+        case 0x67: RRA(zeroPage()); break;
+        case 0x6F: RRA(absolute()); break;
+        case 0x73: RRA(indirectY(false)); tick(); break;
+        case 0x77: RRA(zeroPageX()); break;
+        case 0x7B: RRA(absoluteY(false)); tick(); break;
+        case 0x7F: RRA(absoluteX(false)); tick(); break;
 
         default:
             std::cout << "Unkown instruction " << instruction;
@@ -920,21 +477,42 @@ void CPU6502::executeInstruction(u8 instruction) {
 }
 
 u8 CPU6502::memoryAccess(MemoryAccessMode mode, u16 address, u8 data) {
-    u8 readData = 0;
-
-    if (address >= 0 && address < 0x2000) {
+    // Optimization: Order branches by most likely execution path
+    // 1. RAM (0-2000)
+    // 2. Cartridge (8000+)
+    // 3. PPU (2000-4000)
+    
+    if (address < 0x2000) {
         if (mode == MemoryAccessMode::READ) {
-            readData = ram.read(address);
+            tick();
+            return ram.read(address);
         } else {
             ram.write(address, data);
+            tick();
+            return 0;
         }
-    } else if (address >= 0x2000 && address < 0x4000) {
+    } 
+    else if (address >= 0x8000) {
+         if (mode == MemoryAccessMode::READ) {
+            tick();
+            return mapper->read(address);
+        } else {
+            mapper->write(address, data);
+            tick();
+            return 0;
+        }
+    }
+    else if (address >= 0x2000 && address < 0x4000) {
         if (mode == MemoryAccessMode::READ) {
-            readData = ppu->read(address);
+            tick();
+            return ppu->read(address);
         } else {
             ppu->write(address, data);
+            tick();
+            return 0;
         }
-    } else if (address >= 0x4000 && address < 0x4018) {
+    } 
+    else if (address >= 0x4000 && address < 0x4018) {
         //COPY OAM
         if (address == 0x4014) {
             if (mode == MemoryAccessMode::READ) {
@@ -949,25 +527,30 @@ u8 CPU6502::memoryAccess(MemoryAccessMode mode, u16 address, u8 data) {
             }
         } else {
             if (mode == MemoryAccessMode::READ) {
-                readData = controller->read(address);
+                tick();
+                return controller->read(address);
             } else {
                 controller->write(address, data);
+                tick();
+                return 0;
             }
         }
         //APU I/O registers
     } else if (address >= 0x4018 && address < 0x4020) {
         //CPU test mode
-    } else if (address >= 0x6000 && address <= 0xFFFF) {
+    } else if (address >= 0x6000 && address < 0x8000) {
         if (mode == MemoryAccessMode::READ) {
-            readData = mapper->read(address);
+            tick();
+            return mapper->read(address);
         } else {
             mapper->write(address, data);
+            tick();
+            return 0;
         }
     }
 
     tick();
-
-    return readData;
+    return 0;
 }
 
 u8 CPU6502::read(u16 address) {
@@ -1028,10 +611,6 @@ u8 CPU6502::popStack() {
     return read(stackPointer + 256);
 }
 
-void CPU6502::ADC(std::function<u16()> addressing) {
-    ADC(read(addressing()));
-}
-
 void CPU6502::ADC(u8 data) {
     u8 carry = statusRegister & 1;
     u16 sum = data + accumulator + carry;
@@ -1043,26 +622,10 @@ void CPU6502::ADC(u8 data) {
     setOverflow(overflow);
 }
 
-void CPU6502::AND(std::function<u16()> addressing) {
-    AND(read(addressing()));
-}
-
 void CPU6502::AND(u8 data) {
     accumulator &= data;
     setNegative(accumulator & 0x80);
     setZero(accumulator == 0);
-}
-
-void CPU6502::ASL(std::function<u16()> addressing) {
-    if (addressing == nullptr) {
-        accumulator = ASL_val(accumulator);
-        tick();
-    } else {
-        u16 address = addressing();
-        u8 data = ASL_val(read(address));
-        write(address, data);
-        tick();
-    }
 }
 
 u8 CPU6502::ASL_val(u8 data) {
@@ -1074,11 +637,10 @@ u8 CPU6502::ASL_val(u8 data) {
     return data;
 }
 
-void CPU6502::commonBranchLogic(bool expr, std::function<u16()> resolvePC) {
+void CPU6502::commonBranchLogic(bool expr, u16 resolvePC) {
     if (expr) {
-        u16 newPC = resolvePC();
-        tickIfToNewPage(programCounter + 1, newPC + 1);
-        programCounter = newPC;
+        tickIfToNewPage(programCounter + 1, resolvePC + 1);
+        programCounter = resolvePC;
         tick();
     } else {
         programCounter++;
@@ -1086,48 +648,48 @@ void CPU6502::commonBranchLogic(bool expr, std::function<u16()> resolvePC) {
     }
 }
 
-void CPU6502::BCC(std::function<u16()> resolvePC) {
+void CPU6502::BCC(u16 resolvePC) {
     u8 carry = statusRegister & 1;
     commonBranchLogic(!carry, resolvePC);
 }
 
-void CPU6502::BCS(std::function<u16()> resolvePC) {
+void CPU6502::BCS(u16 resolvePC) {
     u8 carry = statusRegister & 1;
     commonBranchLogic(carry, resolvePC);
 }
 
-void CPU6502::BEQ(std::function<u16()> resolvePC) {
+void CPU6502::BEQ(u16 resolvePC) {
     u8 zero = (statusRegister >> 1) & 1;
     commonBranchLogic(zero, resolvePC);
 }
 
-void CPU6502::BMI(std::function<u16()> resolvePC) {
+void CPU6502::BMI(u16 resolvePC) {
     u8 neg = (statusRegister >> 7) & 1;
     commonBranchLogic(neg, resolvePC);
 }
 
-void CPU6502::BNE(std::function<u16()> resolvePC) {
+void CPU6502::BNE(u16 resolvePC) {
     u8 zero = (statusRegister >> 1) & 1;
     commonBranchLogic(!zero, resolvePC);
 }
 
-void CPU6502::BPL(std::function<u16()> resolvePC) {
+void CPU6502::BPL(u16 resolvePC) {
     u8 neg = (statusRegister >> 7) & 1;
     commonBranchLogic(!neg, resolvePC);
 }
 
-void CPU6502::BVC(std::function<u16()> resolvePC) {
+void CPU6502::BVC(u16 resolvePC) {
     u8 overflow = (statusRegister >> 6) & 1;
     commonBranchLogic(!overflow, resolvePC);
 }
 
-void CPU6502::BVS(std::function<u16()> resolvePC) {
+void CPU6502::BVS(u16 resolvePC) {
     u8 overflow = (statusRegister >> 6) & 1;
     commonBranchLogic(overflow, resolvePC);
 }
 
-void CPU6502::BIT(std::function<u16()> addressing) {
-    u8 data = read(addressing());
+void CPU6502::BIT(u16 addr) {
+    u8 data = read(addr);
     u8 result = accumulator & data;
     u8 data_bit6 = (data >> 6) & 1;
     u8 data_bit7 = (data >> 7) & 1;
@@ -1170,10 +732,6 @@ void CPU6502::CLV() {
     tick();
 }
 
-void CPU6502::CMP(std::function<u16()> addressing) {
-    CMP(read(addressing()));
-}
-
 void CPU6502::CMP(u8 data) {
     u8 cmp = accumulator - data;
     setCarry(accumulator >= data);
@@ -1181,29 +739,21 @@ void CPU6502::CMP(u8 data) {
     setNegative(cmp & 0x80);
 }
 
-void CPU6502::CPX(std::function<u16()> addressing) {
-    u8 data = read(addressing());
+void CPU6502::CPX(u8 data) {
     u8 cmp = xRegister - data;
     setCarry(xRegister >= data);
     setZero(xRegister == data);
     setNegative(cmp & 0x80);
 }
 
-void CPU6502::CPY(std::function<u16()> addressing) {
-    u8 data = read(addressing());
+void CPU6502::CPY(u8 data) {
     u8 cmp = yRegister - data;
     setCarry(yRegister >= data);
     setZero(yRegister == data);
     setNegative(cmp & 0x80);
 }
 
-void CPU6502::DEC(std::function<u16()> addressing) {
-    u16 address = addressing();
-    u8 data = DEC(read(address));
-    write(address, data);
-}
-
-u8 CPU6502::DEC(u8 data) {
+u8 CPU6502::DEC_val(u8 data) {
     data--;
     setZero(data == 0);
     setNegative(data & 0x80);
@@ -1225,22 +775,13 @@ void CPU6502::DEY() {
     tick();
 }
 
-void CPU6502::EOR(std::function<u16()> addressing) {
-    EOR(read(addressing()));
-}
-
 void CPU6502::EOR(u8 data) {
     accumulator ^= data;
     setZero(accumulator == 0);
     setNegative(accumulator & 0x80);
 }
 
-void CPU6502::INC(std::function<u16()> addressing) {
-    u16 address = addressing();
-    write(address, INC(read(address)));
-}
-
-u8 CPU6502::INC(u8 data) {
+u8 CPU6502::INC_val(u8 data) {
     data = data + 1;
     setZero(data == 0);
     setNegative(data & 0x80);
@@ -1262,33 +803,27 @@ void CPU6502::INY() {
     tick();
 }
 
-void CPU6502::JMP(std::function<u16()> addressing) {
-    //indirect
-    if (addressing == nullptr) {
-        u8 lsb = read(programCounter + 1);
-        u8 msb = read(programCounter + 2);
-        u16 address = msb * 256 + lsb;
-        u8 lsbt = read(address);
-        u16 msbAddress = (address & 0xFF) == 0xFF ? address & 0xFF00 : address + 1;
-        u8 msbt = read(msbAddress);
-        programCounter = msbt * 256 + lsbt - 1;
-    } else {
-        programCounter = addressing() - 1;
-    }
+void CPU6502::JMP(u16 addr) {
+    programCounter = addr - 1;
 }
 
-void CPU6502::JSR(std::function<u16()> addressing) {
-    u16 jumpAddress = addressing();
+void CPU6502::JMP_Indirect() {
+    u8 lsb = read(programCounter + 1);
+    u8 msb = read(programCounter + 2);
+    u16 address = msb * 256 + lsb;
+    u8 lsbt = read(address);
+    u16 msbAddress = (address & 0xFF) == 0xFF ? address & 0xFF00 : address + 1;
+    u8 msbt = read(msbAddress);
+    programCounter = msbt * 256 + lsbt - 1;
+}
+
+void CPU6502::JSR(u16 jumpAddress) {
     u8 lsb = programCounter & 0xFF;
     u8 msb = programCounter >> 8;
     pushStack(msb);
     pushStack(lsb);
     programCounter = jumpAddress - 1;
     tick();
-}
-
-void CPU6502::LDA(std::function<u16()> addressing) {
-    LDA(read(addressing()));
 }
 
 void CPU6502::LDA(u8 data) {
@@ -1303,26 +838,10 @@ void CPU6502::LDX(u8 data) {
     setNegative(xRegister & 0x80);
 }
 
-void CPU6502::LDX(std::function<u16()> addressing) {
-    LDX(read(addressing()));
-}
-
-void CPU6502::LDY(std::function<u16()> addressing) {
-    yRegister = read(addressing());
+void CPU6502::LDY(u8 data) {
+    yRegister = data;
     setZero(yRegister == 0);
     setNegative(yRegister & 0x80);
-}
-
-void CPU6502::LSR(std::function<u16()> addressing) {
-    if (addressing == nullptr) {
-        accumulator = LSR_val(accumulator);
-        tick();
-    } else {
-        u16 address = addressing();
-        u8 data = read(address);
-        write(address, LSR_val(data));
-        tick();
-    }
 }
 
 u8 CPU6502::LSR_val(u8 data) {
@@ -1334,17 +853,8 @@ u8 CPU6502::LSR_val(u8 data) {
     return data;
 }
 
-void CPU6502::NOP(std::function<u16()> addressing) {
-    //Unofficial ones have addressing modes.
-    if (addressing != nullptr) {
-        addressing();
-    } else {
-        tick();
-    }
-}
-
-void CPU6502::ORA(std::function<u16()> addressing) {
-    ORA(read(addressing()));
+void CPU6502::NOP() {
+    tick();
 }
 
 void CPU6502::ORA(u8 data) {
@@ -1382,18 +892,6 @@ void CPU6502::PLP() {
     tick();
 }
 
-void CPU6502::ROL(std::function<u16()> addressing) {
-    if (addressing == nullptr) {
-        accumulator = ROL_val(accumulator);
-        tick();
-    } else {
-        u16 address = addressing();
-        u8 data = ROL_val(read(address));
-        write(address, data);
-        tick();
-    }
-}
-
 u8 CPU6502::ROL_val(u8 data) {
     u8 bit7 = data & 0x80;
     data = (data << 1) | (statusRegister & 1);
@@ -1401,18 +899,6 @@ u8 CPU6502::ROL_val(u8 data) {
     setZero(data == 0);
     setNegative(data & 0x80);
     return data;
-}
-
-void CPU6502::ROR(std::function<u16()> addressing) {
-    if (addressing == nullptr) {
-        accumulator = ROR_val(accumulator);
-        tick();
-    } else {
-        u16 address = addressing();
-        u8 data = ROR_val(read(address));
-        write(address, data);
-        tick();
-    }
 }
 
 u8 CPU6502::ROR_val(u8 data) {
@@ -1444,10 +930,6 @@ void CPU6502::RTS() {
     tick();
 }
 
-void CPU6502::SBC(std::function<u16()> addressing) {
-    SBC(read(addressing()));
-}
-
 void CPU6502::SBC(u8 data) {
     ADC(data ^ 0xFF);
 }
@@ -1467,16 +949,16 @@ void CPU6502::SEI() {
     tick();
 }
 
-void CPU6502::STA(std::function<u16()> addressing) {
-    write(addressing(), accumulator);
+void CPU6502::STA(u16 addr) {
+    write(addr, accumulator);
 }
 
-void CPU6502::STX(std::function<u16()> addressing) {
-    write(addressing(), xRegister);
+void CPU6502::STX(u16 addr) {
+    write(addr, xRegister);
 }
 
-void CPU6502::STY(std::function<u16()> addressing) {
-    write(addressing(), yRegister);
+void CPU6502::STY(u16 addr) {
+    write(addr, yRegister);
 }
 
 void CPU6502::TAX() {
@@ -1521,36 +1003,33 @@ void CPU6502::TYA() {
 
 //UNOFFICIAL OPCODES
 //LDA+LDX
-void CPU6502::LAX(std::function<u16()> addressing) {
-    u8 data = read(addressing());
+void CPU6502::LAX(u16 addr) {
+    u8 data = read(addr);
     LDA(data);
     LDX(data);
 }
 
 //STA+acc&x
-void CPU6502::SAX(std::function<u16()> addressing) {
-    write(addressing(), accumulator & xRegister);
+void CPU6502::SAX(u16 addr) {
+    write(addr, accumulator & xRegister);
 }
 
 //DEC+CMP
-void CPU6502::DCP(std::function<u16()> addressing) {
-    u16 address = addressing();
-    u8 data = DEC(read(address));
+void CPU6502::DCP(u16 address) {
+    u8 data = DEC_val(read(address));
     write(address, data);
     CMP(data);
 }
 
 //INC+SBC
-void CPU6502::ISB(std::function<u16()> addressing) {
-    u16 address = addressing();
-    u8 data = INC(read(address));
+void CPU6502::ISB(u16 address) {
+    u8 data = INC_val(read(address));
     write(address, data);
     SBC(data);
 }
 
 //ASL+ORA
-void CPU6502::SLO(std::function<u16()> addressing) {
-    u16 address = addressing();
+void CPU6502::SLO(u16 address) {
     u8 data = ASL_val(read(address));
     write(address, data);
     ORA(data);
@@ -1558,8 +1037,7 @@ void CPU6502::SLO(std::function<u16()> addressing) {
 }
 
 //ROL+AND
-void CPU6502::RLA(std::function<u16()> addressing) {
-    u16 address = addressing();
+void CPU6502::RLA(u16 address) {
     u8 data = ROL_val(read(address));
     write(address, data);
     AND(data);
@@ -1567,8 +1045,7 @@ void CPU6502::RLA(std::function<u16()> addressing) {
 }
 
 //LSR+EOR
-void CPU6502::SRE(std::function<u16()> addressing) {
-    u16 address = addressing();
+void CPU6502::SRE(u16 address) {
     u8 data = LSR_val(read(address));
     write(address, data);
     EOR(data);
@@ -1576,8 +1053,7 @@ void CPU6502::SRE(std::function<u16()> addressing) {
 }
 
 //ROR+ADC
-void CPU6502::RRA(std::function<u16()> addressing) {
-    u16 address = addressing();
+void CPU6502::RRA(u16 address) {
     u8 data = ROR_val(read(address));
     write(address, data);
     ADC(data);
