@@ -10,7 +10,7 @@
 #include "Mapper/Mapper.hpp"
 #include "PPU.hpp"
 #include "RAM.hpp"
-#include "APU.hpp" // <--- NOVO INCLUDE
+#include "APU.hpp" // Integração de Áudio
 
 namespace MedNES {
 
@@ -42,7 +42,7 @@ class CPU6502 {
     };
 
    public:
-    // Adicionado APU* ao construtor
+    // Construtor atualizado para receber APU
     CPU6502(Mapper *mapper, PPU *ppu, APU* apu, Controller *controller) 
         : mapper(mapper), ppu(ppu), apu(apu), controller(controller){};
         
@@ -71,15 +71,12 @@ class CPU6502 {
     RAM ram;
     Mapper *mapper;
     PPU *ppu;
-    APU *apu; // <--- NOVO PONTEIRO
+    APU *apu; // Ponteiro para APU
     Controller *controller;
 
     std::stringstream execLog;
 
-    // ... (MANTENHA TODOS OS MÉTODOS INLINE E PRIVADOS IGUAIS AO ARQUIVO ANTERIOR) ...
-    // Estou omitindo as definições repetidas para economizar espaço, 
-    // mas mantenha todas as funções void ADC, AND, etc. exatamente como estavam.
-    
+    // Helpers Inline
     inline void setSRFlag(StatusFlags, bool);
     inline void setNegative(bool);
     inline void setOverflow(bool);
@@ -89,15 +86,21 @@ class CPU6502 {
     inline void setInterruptDisable(bool);
     inline void setZero(bool);
     inline void setCarry(bool);
+    
     inline void irq();
     inline void NMI();
+    
     inline void LOG_EXEC(u8 instr);
     inline void LOG_PC();
     inline void LOG_CPU_STATE();
     inline void PRINT_LOG();
+    
     inline void tick();
+    
     void pushStack(u8);
     u8 popStack();
+    
+    // Addressing Modes
     u16 immediate();
     u16 zeroPage();
     u16 zeroPageX();
@@ -108,9 +111,12 @@ class CPU6502 {
     u16 indirectX();
     u16 indirectY(bool);
     u16 relative();
+    
+    // Instruções (Otimizadas, sem std::function)
     void ADC(u8); 
     void AND(u8);
     u8 ASL_val(u8);
+    
     void commonBranchLogic(bool, u16);
     void BCC(u16);
     void BCS(u16);
@@ -120,6 +126,7 @@ class CPU6502 {
     void BPL(u16);
     void BVC(u16);
     void BVS(u16);
+    
     void BIT(u16);
     void BRK();
     void CLC();
@@ -166,6 +173,8 @@ class CPU6502 {
     void TXA();
     void TXS();
     void TYA();
+    
+    // Unofficial
     void LAX(u16);
     void SAX(u16);
     void DCP(u16);
@@ -174,6 +183,7 @@ class CPU6502 {
     void RLA(u16);
     void RRA(u16);
     void SRE(u16);
+    
     void tickIfToNewPage(u16, u16);
     inline void pushPC();
 };
