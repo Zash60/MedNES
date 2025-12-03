@@ -154,7 +154,10 @@ class PPU : public INESBus {
     bool inRange = false;
     int inRangeCycles = 8;
     int spriteHeight = 8;
-    std::vector<SpriteRenderEntity> spriteRenderEntities;
+
+    // Optimized: Replaced Vector with fixed array
+    SpriteRenderEntity spriteRenderEntities[8];
+    int spriteCount = 0;
     SpriteRenderEntity out;
 
     Mapper *mapper;
