@@ -214,7 +214,7 @@ void CPU6502::executeInstruction(u8 instruction) {
         case 0x0E: addr = absolute(); write(addr, ASL_val(read(addr))); tick(); break;
         case 0x1E: addr = absoluteX(false); tick(); write(addr, ASL_val(read(addr))); tick(); break;
 
-        // BRANCHES
+        // BRANCHES - relative() increments PC, so we pass the target directly
         case 0x90: BCC(relative()); break;
         case 0xB0: BCS(relative()); break;
         case 0xF0: BEQ(relative()); break;
@@ -477,11 +477,6 @@ void CPU6502::executeInstruction(u8 instruction) {
 }
 
 u8 CPU6502::memoryAccess(MemoryAccessMode mode, u16 address, u8 data) {
-    // Optimization: Order branches by most likely execution path
-    // 1. RAM (0-2000)
-    // 2. Cartridge (8000+)
-    // 3. PPU (2000-4000)
-    
     if (address < 0x2000) {
         if (mode == MemoryAccessMode::READ) {
             tick();
@@ -637,13 +632,15 @@ u8 CPU6502::ASL_val(u8 data) {
     return data;
 }
 
+// CORREÇÃO CRÍTICA AQUI: Removido programCounter++ do else.
+// relative() já consumiu o operando ao ser chamado dentro do switch.
 void CPU6502::commonBranchLogic(bool expr, u16 resolvePC) {
     if (expr) {
         tickIfToNewPage(programCounter + 1, resolvePC + 1);
         programCounter = resolvePC;
         tick();
     } else {
-        programCounter++;
+        // REMOVED: programCounter++; 
         tick();
     }
 }
@@ -811,9 +808,12 @@ void CPU6502::JMP_Indirect() {
     u8 lsb = read(programCounter + 1);
     u8 msb = read(programCounter + 2);
     u16 address = msb * 256 + lsb;
+    
+    // Page boundary bug hardware simulation
     u8 lsbt = read(address);
     u16 msbAddress = (address & 0xFF) == 0xFF ? address & 0xFF00 : address + 1;
     u8 msbt = read(msbAddress);
+    
     programCounter = msbt * 256 + lsbt - 1;
 }
 
