@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <vector>
+// #include <vector> // Removido vector para usar array fixo (performance)
 
 #include "Common/Typedefs.hpp"
 #include "INESBus.hpp"
@@ -47,10 +47,7 @@ struct SpriteRenderEntity {
 
 class PPU : public INESBus {
    public:
-    PPU(Mapper *mapper) : mapper(mapper){
-        // Reserva memória para evitar realocações durante a emulação
-        spriteRenderEntities.reserve(8);
-    };
+    PPU(Mapper *mapper) : mapper(mapper){};
 
     //cpu address space
     u8 read(u16 address);
@@ -65,7 +62,8 @@ class PPU : public INESBus {
     u8 readOAM(int);
     bool genNMI();
     bool generateFrame;
-    
+    void printState(); // Restaurado
+
     // Buffer público para o JNI acessar diretamente
     uint32_t buffer[256 * 240] = {0};
 
@@ -126,7 +124,6 @@ class PPU : public INESBus {
     u8 ppu_read_buffer_cpy = 0;
 
     // Paleta NES NTSC padrão convertida para 0xAABBGGRR (Android Bitmap Little Endian)
-    // Isso permite memcpy direto no JNI.
     u32 palette[64] = {
         0xFF7C7C7C, 0xFFFC0000, 0xFFBC0000, 0xFFBC2844, 0xFF840094, 0xFF2000A8, 0xFF0010A8, 0xFF001488,
         0xFF003050, 0xFF007800, 0xFF006800, 0xFF005800, 0xFF584000, 0xFF000000, 0xFF000000, 0xFF000000,
@@ -163,7 +160,9 @@ class PPU : public INESBus {
     int inRangeCycles = 8;
     int spriteHeight = 8;
 
-    std::vector<SpriteRenderEntity> spriteRenderEntities;
+    // Array fixo para performance crítica
+    SpriteRenderEntity spriteRenderEntities[8];
+    int spriteCount = 0; // Restaurado
     SpriteRenderEntity out;
 
     Mapper *mapper;
