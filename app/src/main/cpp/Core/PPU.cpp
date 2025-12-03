@@ -202,7 +202,10 @@ inline void PPU::emitPixel() {
     bool showSprite = false;
     bool spriteFound = false;
 
-    for (auto &sprite : spriteRenderEntities) {
+    // Optimized loop with static array
+    for (int i = 0; i < spriteCount; i++) {
+        SpriteRenderEntity& sprite = spriteRenderEntities[i];
+
         if (sprite.counter == 0 && sprite.shifted != 8) {
             if (spriteFound) {
                 sprite.shift();
@@ -504,7 +507,8 @@ inline void PPU::decrementSpriteCounters() {
         return;
     }
 
-    for (auto &sprite : spriteRenderEntities) {
+    for (int i = 0; i < spriteCount; i++) {
+        SpriteRenderEntity& sprite = spriteRenderEntities[i];
         if (sprite.counter > 0) {
             sprite.counter--;
         }
@@ -583,7 +587,7 @@ void PPU::evalSprites() {
     if (dot >= 257 && dot <= 320) {
         if (dot == 257) {
             secondaryOAMCursor = 0;
-            spriteRenderEntities.clear();
+            spriteCount = 0; // RESET COUNTER
         }
 
         Sprite sprite = secondaryOAM[secondaryOAMCursor];
@@ -632,7 +636,10 @@ void PPU::evalSprites() {
 
             case 7:
                 if (!isUninit(sprite)) {
-                    spriteRenderEntities.push_back(out);
+                    if (spriteCount < 8) {
+                        spriteRenderEntities[spriteCount] = out;
+                        spriteCount++;
+                    }
                 }
 
                 secondaryOAMCursor++;
