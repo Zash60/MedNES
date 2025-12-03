@@ -14,17 +14,13 @@ void CPU6502::step() {
     programCounter++;
 }
 
-// MUDANÇA 1: APU Tick
 inline void CPU6502::tick() {
     ppu->tick();
     ppu->tick();
     ppu->tick();
-    if(apu) apu->tick(); // Atualiza audio
+    if(apu) apu->tick(); // Avança o relógio da APU
     ++cycle;
 }
-
-// ... (Copie getExecutionState e outros métodos iguais até memoryAccess) ...
-// Para poupar espaço, vou mostrar apenas o memoryAccess modificado. O resto continua igual.
 
 ExecutionState *CPU6502::getExecutionState() {
     ExecutionState *execState = new ExecutionState();
@@ -59,7 +55,7 @@ u16 CPU6502::indirectX() { tick(); u16 operand = (read(++programCounter) + xRegi
 u16 CPU6502::indirectY(bool extraTick) { u16 operand = read(++programCounter); u8 lsb = read(operand); u8 msb = read((operand + 1) % 256); u16 address = (msb * 256 + lsb); if (extraTick) { tickIfToNewPage(address, address + yRegister); } return address + yRegister; }
 u16 CPU6502::relative() { int8_t offset = read(++programCounter); return programCounter + offset; }
 void CPU6502::tickIfToNewPage(u16 pc, u16 newPc) { u16 newPcMSB = newPc >> 8; u16 oldPcMSB = pc >> 8; if (newPcMSB != oldPcMSB) { tick(); } }
-// ... (Execute instruction mantido igual) ...
+
 void CPU6502::executeInstruction(u8 instruction) {
     u16 addr = 0;
     switch (instruction) {
@@ -383,7 +379,7 @@ u8 CPU6502::memoryAccess(MemoryAccessMode mode, u16 address, u8 data) {
             return 0;
         }
     } 
-    // MUDANÇA 2: APU Mapping ($4000 - $4017)
+    // APU Mapping ($4000 - $4017)
     else if (address >= 0x4000 && address <= 0x4017) {
         if (address == 0x4014) { // DMA Handler (PPU)
             ppu->write(address, data);
@@ -429,9 +425,63 @@ u8 CPU6502::memoryAccess(MemoryAccessMode mode, u16 address, u8 data) {
     return 0;
 }
 
-// ... (Resto das funções mantidas iguais) ...
-// Copie todas as implementações de instruções do arquivo anterior (ADC, AND, etc).
-// Estou omitindo para economizar espaço, mas é crucial que elas existam no arquivo final.
+u8 CPU6502::read(u16 address) {
+    return memoryAccess(MemoryAccessMode::READ, address, 0);
+}
+
+void CPU6502::write(u16 address, u8 data) {
+    memoryAccess(MemoryAccessMode::WRITE, address, data);
+}
+
+inline void CPU6502::setSRFlag(CPU6502::StatusFlags flag, bool val) {
+    if (val) {
+        statusRegister |= (1 << flag);
+    } else {
+        statusRegister &= ~(1 << flag);
+    }
+}
+
+inline void CPU6502::setNegative(bool val) {
+    setSRFlag(StatusFlags::NEGATIVE, val);
+}
+
+inline void CPU6502::setOverflow(bool val) {
+    setSRFlag(StatusFlags::OVERFLO, val);
+}
+
+inline void CPU6502::setBreak4(bool val) {
+    setSRFlag(StatusFlags::BREAK4, val);
+}
+
+inline void CPU6502::setBreak5(bool val) {
+    setSRFlag(StatusFlags::BREAK5, val);
+}
+
+inline void CPU6502::setDecimal(bool val) {
+    setSRFlag(StatusFlags::DECIMAL, val);
+}
+
+inline void CPU6502::setInterruptDisable(bool val) {
+    setSRFlag(StatusFlags::INTERRUPT, val);
+}
+
+inline void CPU6502::setZero(bool val) {
+    setSRFlag(StatusFlags::ZERO, val);
+}
+
+inline void CPU6502::setCarry(bool val) {
+    setSRFlag(StatusFlags::CARRY, val);
+}
+
+void CPU6502::pushStack(u8 data) {
+    write(stackPointer + 256, data);
+    stackPointer--;
+}
+
+u8 CPU6502::popStack() {
+    stackPointer++;
+    return read(stackPointer + 256);
+}
 
 void CPU6502::ADC(u8 data) {
     u8 carry = statusRegister & 1;
@@ -459,13 +509,15 @@ u8 CPU6502::ASL_val(u8 data) {
     return data;
 }
 
+// CORREÇÃO CRÍTICA DO BUG DE TELA PRETA:
 void CPU6502::commonBranchLogic(bool expr, u16 resolvePC) {
     if (expr) {
         tickIfToNewPage(programCounter + 1, resolvePC + 1);
         programCounter = resolvePC;
         tick();
     } else {
-        // REMOVED: programCounter++; 
+        // NÃO incrementamos o ProgramCounter aqui porque relative() já leu o byte de offset.
+        // O PC já está apontando para a próxima instrução.
         tick();
     }
 }
@@ -633,12 +685,9 @@ void CPU6502::JMP_Indirect() {
     u8 lsb = read(programCounter + 1);
     u8 msb = read(programCounter + 2);
     u16 address = msb * 256 + lsb;
-    
-    // Page boundary bug hardware simulation
     u8 lsbt = read(address);
     u16 msbAddress = (address & 0xFF) == 0xFF ? address & 0xFF00 : address + 1;
     u8 msbt = read(msbAddress);
-    
     programCounter = msbt * 256 + lsbt - 1;
 }
 
@@ -827,33 +876,28 @@ void CPU6502::TYA() {
 }
 
 //UNOFFICIAL OPCODES
-//LDA+LDX
 void CPU6502::LAX(u16 addr) {
     u8 data = read(addr);
     LDA(data);
     LDX(data);
 }
 
-//STA+acc&x
 void CPU6502::SAX(u16 addr) {
     write(addr, accumulator & xRegister);
 }
 
-//DEC+CMP
 void CPU6502::DCP(u16 address) {
     u8 data = DEC_val(read(address));
     write(address, data);
     CMP(data);
 }
 
-//INC+SBC
 void CPU6502::ISB(u16 address) {
     u8 data = INC_val(read(address));
     write(address, data);
     SBC(data);
 }
 
-//ASL+ORA
 void CPU6502::SLO(u16 address) {
     u8 data = ASL_val(read(address));
     write(address, data);
@@ -861,7 +905,6 @@ void CPU6502::SLO(u16 address) {
     tick();
 }
 
-//ROL+AND
 void CPU6502::RLA(u16 address) {
     u8 data = ROL_val(read(address));
     write(address, data);
@@ -869,7 +912,6 @@ void CPU6502::RLA(u16 address) {
     tick();
 }
 
-//LSR+EOR
 void CPU6502::SRE(u16 address) {
     u8 data = LSR_val(read(address));
     write(address, data);
@@ -877,7 +919,6 @@ void CPU6502::SRE(u16 address) {
     tick();
 }
 
-//ROR+ADC
 void CPU6502::RRA(u16 address) {
     u8 data = ROR_val(read(address));
     write(address, data);
